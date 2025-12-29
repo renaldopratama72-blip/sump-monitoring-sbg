@@ -91,23 +91,126 @@ tab_dash, tab_input, tab_db, tab_admin = st.tabs(["📊 Dashboard", "📝 Input 
 # TAB 1: DASHBOARD
 with tab_dash:
     if df_wb_dash.empty:
-        st.warning("⚠️ Data belum tersedia untuk filter ini. Silakan generate dummy data di tab Setting.")
+        st.warning("⚠️ Data belum tersedia untuk filter ini. Silakan generate dummy data di tab Setting atau input manual.")
     else:
         last = df_wb_dash.iloc[-1]
+        
+        # --- HEADER ---
         st.markdown(f"<div class='date-header'>📅 Dashboard Status per Tanggal: {last['Tanggal'].strftime('%d %B %Y')}</div>", unsafe_allow_html=True)
         
-        # Metrics
+        # --- METRICS ---
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Elevasi Air", f"{last['Elevasi Air (m)']} m", f"Crit: {last['Critical Elevation (m)']}")
         c2.metric("Vol Survey", f"{last['Volume Air Survey (m3)']:,.0f} m³")
-        c3.metric("Rain Today", f"{last['Curah Hujan (mm)']} mm")
-        c4.metric("Rain MTD", f"{df_wb_dash['Curah Hujan (mm)'].sum()} mm")
-        status_clr = "#e74c3c" if last['Status'] == "BAHAYA" else "#27ae60"
-        c5.markdown(f"<div style='background-color:{status_clr};color:white;padding:20px;border-radius:5px;text-align:center;'>{last['Status']}</div>", unsafe_allow_html=True)
+        
+        # Rain metrics
+        rain_today = last['Curah Hujan (mm)']
+        rain_mtd = df_wb_dash['Curah Hujan (mm)'].sum()
+        c3.metric("Rain Today", f"{rain_today} mm")
+        c4.metric("Rain MTD", f"{rain_mtd} mm")
+        
+        # Status Box
+        status_txt = "AMAN"; clr = "#27ae60"
+        if last['Status'] == "BAHAYA": clr = "#e74c3c"; status_txt = "BAHAYA"
+        c5.markdown(f"<div style='background-color:{clr};color:white;padding:20px;border-radius:5px;text-align:center;font-weight:bold;'>{status_txt}</div>", unsafe_allow_html=True)
         
         st.markdown("---")
-        # Render Charts
+
+        # --- RESTORED: WATER BALANCE WARNING BANNER ---
+        last_error = last['Error %']
+        is_wb_critical = False
+        
+        # Logic: If error > 5% or is NaN (Not a Number), show warning
+        if last_error > 5.0 or pd.isna(last_error):
+            is_wb_critical = True
+            st.markdown(f"""
+            <div class="wb-alert" style='background-color: #ffcccc; color: #cc0000; padding: 10px; border-radius: 5px; font-weight: bold; margin-bottom: 10px; border: 1px solid #ff0000;'>
+                ⚠️ PERINGATAN WATER BALANCE: Error {last_error:.1f}% (Melebihi Toleransi 5%)<br>
+                Selisih Volume: {last['Diff Volume']:,.0f} m³
+            </div>
+            """, unsafe_allow_html=True)
+            
+        # --- CHARTS (From ui.py) ---
         ui.render_charts(df_wb_dash, df_p_display, title_suffix)
+
+        # --- RESTORED: DETAIL TABLE ---
+        with st.expander("📋 Lihat Detail Angka Water Balance"):
+            df_show = df_wb_dash[['Tanggal', 'Volume Air Survey (m3)', 'Volume Teoritis', 'Diff Volume', 'Error %']].copy()
+            df_show['Tanggal'] = df_show['Tanggal'].dt.strftime('%d-%m-%Y')
+            
+            # Formatting for nicer display
+            st.dataframe(
+                df_show.style.format({
+                    'Volume Air Survey (m3)': '{:,.0f}',
+                    'Volume Teoritis': '{:,.0f}', 
+                    'Diff Volume': '{:,.0f}',
+                    'Error %': '{:.1f}%'
+                }), 
+                hide_index=True, 
+                use_container_width=True
+            )
+
+        # --- RESTORED: ANALYSIS & RECOMMENDATION BOXES ---
+        st.markdown("---")
+        st.subheader("🧠 Analisa & Rekomendasi")
+        
+        col_an, col_rec = st.columns(2)
+        
+        # Determine Status for Boxes
+        if is_wb_critical:
+            style_box = "danger-box" # CSS class defined in ui.py
+            header_text = "🚨 PERINGATAN: DATA TIDAK BALANCE"
+            bg_color = "#fdedec"
+            border_color = "#e74c3c"
+        elif last['Elevasi Air (m)'] >= last['Critical Elevation (m)']:
+            style_box = "danger-box"
+            header_text = "🚨 BAHAYA: ELEVASI TINGGI"
+            bg_color = "#fdedec"
+            border_color = "#e74c3c"
+        else:
+            style_box = "analysis-box"
+            header_text = "✅ KONDISI AMAN"
+            bg_color = "#e8f6f3"
+            border_color = "#1abc9c"
+
+        # Render Left Box (Analysis)
+        with col_an:
+            st.markdown(f"""
+            <div style='background-color: {bg_color}; padding: 15px; border-radius: 10px; border-left: 5px solid {border_color};'>
+                <h4>{header_text}</h4>
+                <ul>
+                    <li><b>Status Water Balance:</b> Error {last_error:.1f}%.</li>
+                    <li><b>Curah Hujan Hari Ini:</b> {rain_today} mm.</li>
+                    <li><b>Status Elevasi:</b> {last['Elevasi Air (m)']} m.</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Render Right Box (Recommendation)
+        with col_rec:
+            st.markdown(f"""
+            <div style='background-color: #fef9e7; padding: 15px; border-radius: 10px; border-left: 5px solid #f1c40f;'>
+                <h4>🛠️ REKOMENDASI</h4>
+            """, unsafe_allow_html=True)
+            
+            rec_list = []
+            
+            # Logic for recommendations
+            if is_wb_critical:
+                rec_list.append("🔴 <b>CEK INPUT DATA (HUMAN ERROR):</b> Pastikan angka Elevasi, Debit, dan Hujan yang diinput sudah benar.")
+                rec_list.append("🔴 <b>Cek Groundwater:</b> Apakah ada air tanah/rembesan besar yang belum diinput di kolom Groundwater?")
+                rec_list.append("🔴 <b>Cek Debit Pompa:</b> Verifikasi flowmeter pompa.")
+            
+            if last['Elevasi Air (m)'] >= last['Critical Elevation (m)']:
+                rec_list.append("⛔ <b>STOP OPERASI & EVAKUASI UNIT.</b>")
+            
+            if not rec_list:
+                st.markdown("- ✅ Data Valid & Operasi Aman.")
+            else:
+                for r in rec_list:
+                    st.markdown(f"- {r}", unsafe_allow_html=True)
+            
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # TAB 2: INPUT
 with tab_input:
