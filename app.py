@@ -38,8 +38,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. FILE MANAGEMENT SYSTEM (V11 - CLEAN DATA) ---
-# Menggunakan nama file baru agar tidak bentrok dengan versi lama
+# --- 2. FILE MANAGEMENT SYSTEM (REAL DATA) ---
 FILE_SUMP = "db_sump_real.csv"   
 FILE_POMPA = "db_pompa_real.csv"
 
@@ -50,14 +49,9 @@ def load_or_init_data():
             df_s = pd.read_csv(FILE_SUMP)
             df_s['Tanggal'] = pd.to_datetime(df_s['Tanggal'])
         except:
-            st.error("File Sump Corrupt/Error. Membuat database baru.")
             df_s = pd.DataFrame(columns=["Tanggal", "Site", "Pit", "Elevasi Air (m)", "Critical Elevation (m)", "Volume Air Survey (m3)", "Plan Curah Hujan (mm)", "Curah Hujan (mm)", "Actual Catchment (Ha)", "Groundwater (m3)", "Status"])
     else:
-        # INI PERBAIKANNYA: Membuat DataFrame KOSONG (Tanpa Data Dummy)
-        # Jadi data dimulai dari NOL, murni inputan Bapak.
         df_s = pd.DataFrame(columns=["Tanggal", "Site", "Pit", "Elevasi Air (m)", "Critical Elevation (m)", "Volume Air Survey (m3)", "Plan Curah Hujan (mm)", "Curah Hujan (mm)", "Actual Catchment (Ha)", "Groundwater (m3)", "Status"])
-        # Kita buat 1 data pancingan (dummy row) agar kolom terdeteksi, tapi Bapak bisa hapus nanti
-        # (Optional: Jika ingin benar2 kosong, biarkan kosong. Di sini saya buat kosong agar bersih)
     
     # 2. LOAD DATA POMPA
     if os.path.exists(FILE_POMPA):
@@ -65,10 +59,8 @@ def load_or_init_data():
             df_p = pd.read_csv(FILE_POMPA)
             df_p['Tanggal'] = pd.to_datetime(df_p['Tanggal'])
         except:
-            st.error("File Pompa Corrupt/Error. Membuat database baru.")
             df_p = pd.DataFrame(columns=["Tanggal", "Site", "Pit", "Unit Code", "Debit Plan (m3/h)", "Debit Actual (m3/h)", "EWH Plan", "EWH Actual"])
     else:
-        # INI PERBAIKANNYA: Membuat DataFrame KOSONG (Tanpa Data Dummy)
         df_p = pd.DataFrame(columns=["Tanggal", "Site", "Pit", "Unit Code", "Debit Plan (m3/h)", "Debit Actual (m3/h)", "EWH Plan", "EWH Actual"])
 
     return df_s, df_p
@@ -84,36 +76,32 @@ if 'logged_in' not in st.session_state:
 if 'username' not in st.session_state:
     st.session_state['username'] = ''
 
-# Default Site Map (Jika database kosong, kita butuh daftar Site awal untuk Dropdown)
+# Site Map Initialization
 if 'site_map' not in st.session_state:
-    # Cek apakah ada data di database
+    # Default Structure
+    base_map = {
+        "Lais Coal Mine (LCM)": ["Sump Wijaya Barat", "Sump Wijaya Timur"],
+        "Wiraduta Sejahtera Langgeng (WSL)": ["Sump F01", "Sump F02"],
+        "Nusantara Energy (NE)": ["Sump S8"]
+    }
+    # Update with existing data if any
     if not st.session_state.data_sump.empty:
         existing_sites = st.session_state.data_sump['Site'].unique()
-        current_map = {}
         for s in existing_sites:
             pits = st.session_state.data_sump[st.session_state.data_sump['Site'] == s]['Pit'].unique().tolist()
-            current_map[s] = pits
-        st.session_state['site_map'] = current_map
-    else:
-        # Default Site Map (Hanya Struktur, Tanpa Data Angka)
-        st.session_state['site_map'] = {
-            "Lais Coal Mine (LCM)": ["Sump Wijaya Barat", "Sump Wijaya Timur"],
-            "Wiraduta Sejahtera Langgeng (WSL)": ["Sump F01", "Sump F02"],
-            "Nusantara Energy (NE)": ["Sump S8"]
-        }
+            base_map[s] = pits
+    st.session_state['site_map'] = base_map
 
 USERS = {"englcm": "eng123", "engwsl": "eng123", "engne": "eng123", "admin": "eng123"}
 
 # --- 4. SIDEBAR ---
 with st.sidebar:
-    # --- LOGO HANDLING ---
     logo_filename = "1.bara tama wijaya.jpg"
     if os.path.exists(logo_filename):
         st.image(logo_filename, use_container_width=True)
     else:
         st.markdown("## 🏢 BARA TAMA WIJAYA")
-        st.caption("⚠️ Upload file logo ke folder repository agar gambar muncul.")
-
+    
     st.markdown("<h3 style='text-align: center;'>Water Management</h3>", unsafe_allow_html=True)
     st.divider()
     
@@ -142,17 +130,20 @@ with st.sidebar:
         unit_options += avail_units_list
     selected_unit = st.selectbox("🚜 Pilih Unit Pompa", unit_options)
     
-    st.caption("FILTER WAKTU")
-    # Handle jika data kosong agar tidak error
+    st.divider()
+    st.caption("📅 FILTER WAKTU (PENTING!)")
+    
+    # LOGIKA PENTING: Update available years based on CURRENT data
     if not st.session_state.data_sump.empty:
         avail_years = sorted(st.session_state.data_sump['Tanggal'].dt.year.unique(), reverse=True)
     else:
         avail_years = [date.today().year]
         
-    sel_year = st.selectbox("📅 Tahun", avail_years)
+    sel_year = st.selectbox("Tahun", avail_years)
+    
     month_map = {1:"Januari", 2:"Februari", 3:"Maret", 4:"April", 5:"Mei", 6:"Juni", 7:"Juli", 8:"Agustus", 9:"September", 10:"Oktober", 11:"November", 12:"Desember"}
     curr_m = date.today().month
-    sel_month_name = st.selectbox("🗓️ Bulan", list(month_map.values()), index=curr_m-1)
+    sel_month_name = st.selectbox("Bulan", list(month_map.values()), index=curr_m-1)
     sel_month_int = [k for k,v in month_map.items() if v==sel_month_name][0]
 
 # --- 5. MAIN LOGIC (WATER BALANCE CALC) ---
@@ -163,60 +154,61 @@ def save_to_csv():
 df_s = st.session_state.data_sump.copy()
 df_p = st.session_state.data_pompa.copy()
 
-# Filter Data (Hanya jika data tidak kosong)
+# Filter Data
 df_wb_dash = pd.DataFrame()
 df_p_display = pd.DataFrame()
 title_suffix = ""
 
-if not df_s.empty and not df_p.empty:
+if not df_s.empty:
     if selected_site:
         df_s = df_s[df_s['Site'] == selected_site]
-        df_p = df_p[df_p['Site'] == selected_site]
+        df_p = df_p[df_p['Site'] == selected_site] if not df_p.empty else df_p
     if selected_pit != "All Sumps":
         df_s = df_s[df_s['Pit'] == selected_pit]
-        df_p = df_p[df_p['Pit'] == selected_pit]
+        df_p = df_p[df_p['Pit'] == selected_pit] if not df_p.empty else df_p
 
+    # Filter by Date
     df_s_filt = df_s[(df_s['Tanggal'].dt.year == sel_year) & (df_s['Tanggal'].dt.month == sel_month_int)].sort_values(by="Tanggal")
-    df_p_filt = df_p[(df_p['Tanggal'].dt.year == sel_year) & (df_p['Tanggal'].dt.month == sel_month_int)].sort_values(by="Tanggal")
+    
+    if not df_p.empty:
+        df_p_filt = df_p[(df_p['Tanggal'].dt.year == sel_year) & (df_p['Tanggal'].dt.month == sel_month_int)].sort_values(by="Tanggal")
+    else:
+        df_p_filt = pd.DataFrame()
 
-    if not df_p_filt.empty:
-        # 1. Prepare Data for Pump Graph
-        if selected_unit != "All Units":
-            df_p_display = df_p_filt[df_p_filt['Unit Code'] == selected_unit].sort_values(by="Tanggal")
-            title_suffix = f"Unit: {selected_unit}"
+    if not df_s_filt.empty:
+        # Jika ada data Sump
+        if not df_p_filt.empty:
+            # Jika ada data Pompa juga
+            if selected_unit != "All Units":
+                df_p_display = df_p_filt[df_p_filt['Unit Code'] == selected_unit].sort_values(by="Tanggal")
+                title_suffix = f"Unit: {selected_unit}"
+            else:
+                df_p_display = df_p_filt.groupby('Tanggal')[['Debit Plan (m3/h)', 'Debit Actual (m3/h)', 'EWH Plan', 'EWH Actual']].mean().reset_index()
+                title_suffix = "Rata-rata Semua Unit"
+
+            df_p_total = df_p_filt.copy()
+            df_p_total['Volume Out'] = df_p_total['Debit Actual (m3/h)'] * df_p_total['EWH Actual']
+            daily_out = df_p_total.groupby(['Site', 'Pit', 'Tanggal'])['Volume Out'].sum().reset_index()
+
+            df_wb = pd.merge(df_s_filt, daily_out, on=['Site', 'Pit', 'Tanggal'], how='left')
+            df_wb['Volume Out'] = df_wb['Volume Out'].fillna(0)
         else:
-            df_p_display = df_p_filt.groupby('Tanggal')[['Debit Plan (m3/h)', 'Debit Actual (m3/h)', 'EWH Plan', 'EWH Actual']].mean().reset_index()
-            title_suffix = "Rata-rata Semua Unit"
-
-        # 2. WATER BALANCE CALCULATION
-        df_p_total = df_p_filt.copy()
-        df_p_total['Volume Out'] = df_p_total['Debit Actual (m3/h)'] * df_p_total['EWH Actual']
-        daily_out = df_p_total.groupby(['Site', 'Pit', 'Tanggal'])['Volume Out'].sum().reset_index()
-
-        df_wb = pd.merge(df_s_filt, daily_out, on=['Site', 'Pit', 'Tanggal'], how='left')
-        df_wb['Volume Out'] = df_wb['Volume Out'].fillna(0)
-
-        # Inflow: Rain & Groundwater
+            # Jika hanya Sump, belum ada Pompa
+            df_wb = df_s_filt.copy()
+            df_wb['Volume Out'] = 0
+        
+        # Inflow Logic
         df_wb['Volume In (Rain)'] = df_wb['Curah Hujan (mm)'] * df_wb['Actual Catchment (Ha)'] * 10
         df_wb['Volume In (GW)'] = df_wb['Groundwater (m3)'].fillna(0)
 
         df_wb = df_wb.sort_values(by="Tanggal")
         df_wb['Volume Kemarin'] = df_wb['Volume Air Survey (m3)'].shift(1)
 
-        # RUMUS WATER BALANCE UPDATE
+        # RUMUS WB
         df_wb['Volume Teoritis'] = df_wb['Volume Kemarin'] + df_wb['Volume In (Rain)'] + df_wb['Volume In (GW)'] - df_wb['Volume Out']
         df_wb['Diff Volume'] = df_wb['Volume Air Survey (m3)'] - df_wb['Volume Teoritis']
         df_wb['Error %'] = (df_wb['Diff Volume'].abs() / df_wb['Volume Air Survey (m3)']) * 100
-        df_wb_dash = df_wb 
-    elif not df_s_filt.empty:
-        # Jika hanya ada data Sump tapi belum ada data Pompa
-        df_wb_dash = df_s_filt.copy()
-        df_wb_dash['Volume Out'] = 0
-        df_wb_dash['Volume In (Rain)'] = df_wb_dash['Curah Hujan (mm)'] * df_wb_dash['Actual Catchment (Ha)'] * 10
-        df_wb_dash['Volume In (GW)'] = df_wb_dash['Groundwater (m3)'].fillna(0)
-        df_wb_dash['Volume Teoritis'] = 0 # Cannot calc without prev day logic properly
-        df_wb_dash['Diff Volume'] = 0
-        df_wb_dash['Error %'] = 0
+        df_wb_dash = df_wb
 
 # --- FUNGSI LOGIN ---
 def render_login_form(unique_key):
@@ -240,13 +232,18 @@ tab_dash, tab_input, tab_db, tab_admin = st.tabs(["📊 Dashboard", "📝 Input 
 # TAB 1: DASHBOARD
 with tab_dash:
     if df_wb_dash.empty:
-        st.info("👋 Selamat Datang! Database masih kosong untuk periode ini.")
-        st.markdown("""
-        **Langkah Awal:**
-        1. Buka Tab **📝 Input (Admin)**.
-        2. Login (User: `admin` / Pass: `eng123`).
-        3. Masukkan Data Harian (Sump & Pompa).
-        """)
+        # LOGIKA PEMBERITAHUAN JIKA DATA ADA TAPI FILTER SALAH
+        st.warning(f"⚠️ Dashboard Kosong untuk {sel_month_name} {sel_year}.")
+        
+        if not st.session_state.data_sump.empty:
+            # Cek data yang tersedia tanggal berapa saja
+            dates = st.session_state.data_sump['Tanggal'].dt.strftime('%d-%b-%Y').unique()
+            st.markdown(f"**Tapi Database Anda punya data di tanggal berikut:**")
+            st.write(dates)
+            st.info("💡 Solusi: Ubah 'Tahun' atau 'Bulan' di Sidebar (sebelah kiri) agar sesuai dengan tanggal data di atas.")
+        else:
+            st.info("Database benar-benar kosong. Silakan ke Tab '📝 Input' untuk mengisi data.")
+
     else:
         last = df_wb_dash.iloc[-1]
         
@@ -259,7 +256,6 @@ with tab_dash:
         c1.metric("Elevasi Air", f"{last['Elevasi Air (m)']} m", f"Crit: {last['Critical Elevation (m)']}")
         c2.metric("Vol Survey", f"{last['Volume Air Survey (m3)']:,.0f} m³")
         
-        # RAINFALL TODAY VS MTD
         rain_today = last['Curah Hujan (mm)']
         rain_mtd = df_wb_dash['Curah Hujan (mm)'].sum()
         c3.metric("Rain Today", f"{rain_today} mm")
@@ -288,7 +284,7 @@ with tab_dash:
         col_wb1, col_wb2 = st.columns(2)
         
         with col_wb1:
-            # CHART RAINFALL PLAN VS ACTUAL
+            # CHART RAINFALL
             fig_rain = go.Figure()
             fig_rain.add_trace(go.Bar(
                 x=df_wb_dash['Tanggal'], y=df_wb_dash['Curah Hujan (mm)'], 
@@ -306,7 +302,6 @@ with tab_dash:
         with col_wb2:
             # CHART WATER BALANCE
             fig_wb = go.Figure()
-            # Stacked Inflow
             fig_wb.add_trace(go.Bar(
                 x=df_wb_dash['Tanggal'], y=df_wb_dash['Volume In (Rain)'], 
                 name='In (Rain)', marker_color='#3498db'
@@ -315,16 +310,14 @@ with tab_dash:
                 x=df_wb_dash['Tanggal'], y=df_wb_dash['Volume In (GW)'], 
                 name='In (Groundwater)', marker_color='#9b59b6'
             ))
-            # Outflow - LABEL "TOTAL ALL PUMPS"
             fig_wb.add_trace(go.Bar(
                 x=df_wb_dash['Tanggal'], y=df_wb_dash['Volume Out'], 
-                name='Out (Total All Pumps)', marker_color='#e74c3c',
+                name='Out (Pumps)', marker_color='#e74c3c',
                 text=df_wb_dash['Volume Out'], texttemplate='%{text:.0f}', textposition='auto'
             ))
             fig_wb.update_layout(title="Volume Flow (m³): In vs Out", barmode='group', height=350, margin=dict(t=30), legend=dict(orientation='h', y=1.1))
             st.plotly_chart(fig_wb, use_container_width=True)
             
-        # TABEL VALIDASI
         with st.expander("📋 Lihat Detail Angka Water Balance"):
             df_show = df_wb_dash[['Tanggal', 'Volume Air Survey (m3)', 'Volume Teoritis', 'Diff Volume', 'Error %']].copy()
             df_show['Tanggal'] = df_show['Tanggal'].dt.strftime('%d-%m-%Y')
@@ -378,7 +371,7 @@ with tab_dash:
                 fig_e.update_layout(legend=dict(orientation='h', y=1.1), height=300, margin=dict(t=20))
                 st.plotly_chart(fig_e, use_container_width=True)
         else:
-            st.warning("Belum ada data Pompa yang diinput.")
+            st.info("ℹ️ Belum ada data Pompa untuk periode ini (Hanya data Sump).")
 
         # --- 4. ANALISA & REKOMENDASI ---
         st.markdown("---")
@@ -408,10 +401,9 @@ with tab_dash:
             st.markdown('<div class="rec-box"><h4>🛠️ REKOMENDASI</h4>', unsafe_allow_html=True)
             rec_list = []
             
-            # REKOMENDASI WATER BALANCE
             if is_wb_critical:
                 rec_list.append("🔴 <b>CEK INPUT DATA (HUMAN ERROR):</b> Pastikan angka Elevasi, Debit, dan Hujan yang diinput sudah benar.")
-                rec_list.append("🔴 <b>Cek Groundwater:</b> Apakah ada air tanah/rembesan besar yang belum diinput di kolom Groundwater?")
+                rec_list.append("🔴 <b>Cek Groundwater:</b> Apakah ada air tanah/rembesan besar yang belum diinput?")
                 rec_list.append("🔴 <b>Cek Debit Pompa:</b> Verifikasi flowmeter pompa.")
             
             if last['Elevasi Air (m)'] >= last['Critical Elevation (m)']:
@@ -431,68 +423,74 @@ with tab_input:
         # --- FORM INPUT ---
         with st.expander("➕ Input Harian Baru", expanded=True):
             d_in = st.date_input("Tanggal", date.today())
-            p_in = st.selectbox("Sump", st.session_state['site_map'].get(selected_site, []), key="pi")
             
-            cl, cr = st.columns(2)
-            with cl:
-                with st.form("fs"):
-                    st.markdown("<b>Data Sump, Hujan & Groundwater</b>", unsafe_allow_html=True)
-                    c1, c2 = st.columns(2)
-                    e_a = c1.number_input("Elevasi (m)", format="%.2f")
-                    v_a = c2.number_input("Volume Survey (m3)", step=100)
-                    r_p = c1.number_input("Rain Plan (mm)", value=20.0)
-                    r_a = c2.number_input("Rain Act (mm)", 0.0)
-                    gw_v = st.number_input("Groundwater/Seepage Volume (m3)", 0.0, help="Air masuk selain hujan")
-                    
-                    if st.form_submit_button("Simpan Sump"):
-                        new = {
-                            "Tanggal": pd.to_datetime(d_in), "Site": selected_site, "Pit": p_in,
-                            "Elevasi Air (m)": e_a, "Critical Elevation (m)": 13.0,
-                            "Volume Air Survey (m3)": v_a, "Plan Curah Hujan (mm)": r_p,
-                            "Curah Hujan (mm)": r_a, "Actual Catchment (Ha)": 25.0,
-                            "Groundwater (m3)": gw_v,
-                            "Status": "BAHAYA" if e_a > 13 else "AMAN"
-                        }
-                        # APPEND DATA
-                        st.session_state.data_sump = pd.concat([pd.DataFrame([new]), st.session_state.data_sump], ignore_index=True)
-                        save_to_csv()
-                        st.success("Data Sump Tersimpan!")
+            # Update pilihan Sump berdasarkan Site
+            avail_pits = st.session_state['site_map'].get(selected_site, [])
+            if not avail_pits:
+                st.warning("⚠️ Site ini belum punya daftar Sump. Silakan tambah di Tab Setting.")
+                p_in = None
+            else:
+                p_in = st.selectbox("Sump", avail_pits, key="pi")
+            
+            if p_in:
+                cl, cr = st.columns(2)
+                with cl:
+                    with st.form("fs"):
+                        st.markdown(f"<b>Data Sump ({selected_site} - {p_in})</b>", unsafe_allow_html=True)
+                        c1, c2 = st.columns(2)
+                        e_a = c1.number_input("Elevasi (m)", format="%.2f")
+                        v_a = c2.number_input("Volume Survey (m3)", step=100)
+                        r_p = c1.number_input("Rain Plan (mm)", value=20.0)
+                        r_a = c2.number_input("Rain Act (mm)", 0.0)
+                        gw_v = st.number_input("Groundwater/Seepage Volume (m3)", 0.0, help="Air masuk selain hujan")
                         
-            with cr:
-                with st.form("fp"):
-                    st.markdown("<b>Data Pompa (Plan vs Act)</b>", unsafe_allow_html=True)
-                    uc = st.text_input("Unit Code (e.g., WP-01)")
-                    c_dp, c_da = st.columns(2)
-                    dp = c_dp.number_input("Debit Plan (m3/h)", value=500)
-                    da = c_da.number_input("Debit Actual (m3/h)", 0)
-                    ea = st.number_input("EWH Actual (Jam)", 0.0)
-                    if st.form_submit_button("Simpan Pompa"):
-                        newp = {
-                            "Tanggal": pd.to_datetime(d_in), "Site": selected_site, "Pit": p_in,
-                            "Unit Code": uc, "Debit Plan (m3/h)": dp, "Debit Actual (m3/h)": da,
-                            "EWH Plan": 20.0, "EWH Actual": ea
-                        }
-                        # APPEND DATA
-                        st.session_state.data_pompa = pd.concat([pd.DataFrame([newp]), st.session_state.data_pompa], ignore_index=True)
-                        save_to_csv()
-                        st.success("Data Pompa Tersimpan!")
+                        if st.form_submit_button("Simpan Sump"):
+                            new = {
+                                "Tanggal": pd.to_datetime(d_in), "Site": selected_site, "Pit": p_in,
+                                "Elevasi Air (m)": e_a, "Critical Elevation (m)": 13.0,
+                                "Volume Air Survey (m3)": v_a, "Plan Curah Hujan (mm)": r_p,
+                                "Curah Hujan (mm)": r_a, "Actual Catchment (Ha)": 25.0,
+                                "Groundwater (m3)": gw_v,
+                                "Status": "BAHAYA" if e_a > 13 else "AMAN"
+                            }
+                            # APPEND & SAVE
+                            st.session_state.data_sump = pd.concat([pd.DataFrame([new]), st.session_state.data_sump], ignore_index=True)
+                            save_to_csv()
+                            st.success("Data Sump Tersimpan! Merefresh Dashboard...")
+                            st.rerun() # AUTO REFRESH
+                            
+                with cr:
+                    with st.form("fp"):
+                        st.markdown(f"<b>Data Pompa ({selected_site} - {p_in})</b>", unsafe_allow_html=True)
+                        uc = st.text_input("Unit Code (e.g., WP-01)")
+                        c_dp, c_da = st.columns(2)
+                        dp = c_dp.number_input("Debit Plan (m3/h)", value=500)
+                        da = c_da.number_input("Debit Actual (m3/h)", 0)
+                        ea = st.number_input("EWH Actual (Jam)", 0.0)
+                        if st.form_submit_button("Simpan Pompa"):
+                            newp = {
+                                "Tanggal": pd.to_datetime(d_in), "Site": selected_site, "Pit": p_in,
+                                "Unit Code": uc, "Debit Plan (m3/h)": dp, "Debit Actual (m3/h)": da,
+                                "EWH Plan": 20.0, "EWH Actual": ea
+                            }
+                            # APPEND & SAVE
+                            st.session_state.data_pompa = pd.concat([pd.DataFrame([newp]), st.session_state.data_pompa], ignore_index=True)
+                            save_to_csv()
+                            st.success("Data Pompa Tersimpan! Merefresh Dashboard...")
+                            st.rerun() # AUTO REFRESH
 
         st.divider()
-        st.markdown("### ✏️ Edit Database (Hati-hati)")
-        st.caption("Ubah data di tabel lalu tekan tombol Save di bawah tabel.")
+        st.markdown("### ✏️ Edit Database")
         
         t1, t2 = st.tabs(["Edit Sump", "Edit Pompa"])
         with t1:
-            # Filter hanya site yang dipilih agar tidak salah edit site lain
             current_data_s = st.session_state.data_sump[st.session_state.data_sump['Site']==selected_site]
             ed_s = st.data_editor(current_data_s, num_rows="dynamic", key="es")
             
             if st.button("💾 Simpan Perubahan Sump"):
-                # Ambil data SELAIN site ini
                 other_data_s = st.session_state.data_sump[st.session_state.data_sump['Site']!=selected_site]
-                # Gabungkan data lain + data yang baru diedit
                 st.session_state.data_sump = pd.concat([other_data_s, ed_s], ignore_index=True)
-                save_to_csv() # SAVE IMMEDIATELY
+                save_to_csv() 
                 st.success("Database Sump Diperbarui!")
                 st.rerun()
                 
@@ -503,32 +501,11 @@ with tab_input:
             if st.button("💾 Simpan Perubahan Pompa"):
                 other_data_p = st.session_state.data_pompa[st.session_state.data_pompa['Site']!=selected_site]
                 st.session_state.data_pompa = pd.concat([other_data_p, ed_p], ignore_index=True)
-                save_to_csv() # SAVE IMMEDIATELY
+                save_to_csv() 
                 st.success("Database Pompa Diperbarui!")
                 st.rerun()
 
 # TAB 3 & 4 (Database & Admin)
 with tab_db:
     c1, c2 = st.columns(2)
-    c1.download_button("Download Sump CSV", st.session_state.data_sump.to_csv(index=False), "db_sump_real.csv")
-    c2.download_button("Download Pompa CSV", st.session_state.data_pompa.to_csv(index=False), "db_pompa_real.csv")
-    st.dataframe(st.session_state.data_sump)
-
-with tab_admin:
-    if st.session_state['logged_in']:
-        st.subheader("Konfigurasi Site")
-        ns = st.text_input("Tambah Nama Site Baru")
-        if st.button("Add Site") and ns: 
-            st.session_state['site_map'][ns] = []
-            st.success(f"Site {ns} ditambahkan. Silakan pilih di sidebar.")
-            
-        st.divider()
-        st.subheader("⚠️ Danger Zone")
-        if st.button("HAPUS SEMUA DATA (RESET)"):
-            if os.path.exists(FILE_SUMP): os.remove(FILE_SUMP)
-            if os.path.exists(FILE_POMPA): os.remove(FILE_POMPA)
-            st.session_state.pop('data_sump', None)
-            st.session_state.pop('data_pompa', None)
-            st.warning("Data dihapus. Silakan refresh.")
-            st.rerun()
-    else: render_login_form("adm")
+    c1.download_button("Download Sump CSV", st.session_state.data_sum
