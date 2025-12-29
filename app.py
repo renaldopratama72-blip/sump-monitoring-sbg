@@ -91,7 +91,7 @@ tab_dash, tab_input, tab_db, tab_admin = st.tabs(["📊 Dashboard", "📝 Input 
 # TAB 1: DASHBOARD
 with tab_dash:
     if df_wb_dash.empty:
-        st.warning("⚠️ Data belum tersedia untuk filter ini.")
+        st.warning("⚠️ Data belum tersedia untuk filter ini. Silakan generate dummy data di tab Setting.")
     else:
         last = df_wb_dash.iloc[-1]
         st.markdown(f"<div class='date-header'>📅 Dashboard Status per Tanggal: {last['Tanggal'].strftime('%d %B %Y')}</div>", unsafe_allow_html=True)
@@ -188,10 +188,49 @@ with tab_db:
     c2.download_button("Download Pompa CSV", st.session_state.data_pompa.to_csv(index=False), "pompa.csv")
     st.dataframe(st.session_state.data_sump)
 
-# TAB 4: ADMIN
+# TAB 4: ADMIN / SETTINGS
 with tab_admin:
+    st.markdown("### ⚙️ System Settings")
+    
     if st.session_state['logged_in']:
+        # Section 1: Manage Sites
+        st.markdown("#### 🏗️ Manage Sites")
         ns = st.text_input("New Site Name")
         if st.button("Add Site") and ns: st.session_state['site_map'][ns] = []
-    else: ui.render_login_form("adm")
-    
+        
+        st.divider()
+        
+        # Section 2: Developer Tools (Dummy Data)
+        st.markdown("#### 🧪 Developer Tools (Dummy Data)")
+        st.info("Tools ini digunakan untuk mengisi database dengan data dummy agar fitur grafik bisa diuji.")
+        
+        c_dev1, c_dev2 = st.columns(2)
+        
+        with c_dev1:
+            if st.button("Generate Dummy Data", type="primary", use_container_width=True):
+                with st.spinner("Generating 30 days of data..."):
+                    db.generate_dummy_data()
+                    # Reload Data
+                    df_s, df_p = db.load_data()
+                    st.session_state['data_sump'] = df_s
+                    st.session_state['data_pompa'] = df_p
+                    # Force map rebuild
+                    st.session_state.pop('site_map', None) 
+                st.success("Dummy data 'dummy_Site_Demo' has been created.")
+                st.rerun()
+                
+        with c_dev2:
+            if st.button("Delete Dummy Data", type="secondary", use_container_width=True):
+                with st.spinner("Cleaning up..."):
+                    db.delete_dummy_data()
+                    # Reload Data
+                    df_s, df_p = db.load_data()
+                    st.session_state['data_sump'] = df_s
+                    st.session_state['data_pompa'] = df_p
+                    st.session_state.pop('site_map', None) 
+                st.warning("All data prefixed with 'dummy_' has been deleted.")
+                st.rerun()
+
+    else:
+        ui.render_login_form("adm")
+        

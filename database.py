@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from sqlalchemy import text
+from datetime import date, timedelta
+import random
 
 # Initialize connection
 def get_connection():
@@ -31,7 +34,6 @@ def load_data():
     # --- LOAD SUMP ---
     df_s = conn.query("SELECT * FROM sump", ttl=0)
     
-    # FIX: Renaming columns UNCONDITIONALLY (Removed the 'if not empty' check)
     # Ensure columns are lowercase first (Postgres standard)
     df_s.columns = map(str.lower, df_s.columns)
     
@@ -47,8 +49,6 @@ def load_data():
         "groundwater": "Groundwater (m3)", "tanggal": "Tanggal", "site": "Site", "pit": "Pit", "status": "Status"
     })
 
-    # If DataFrame is truly empty (0 columns), enforce structure manually
-    # This happens if the table creation query behaved unexpectedly
     if df_s.empty and 'Site' not in df_s.columns:
          df_s = pd.DataFrame(columns=[
             "Tanggal", "Site", "Pit", "Elevasi Air (m)", "Critical Elevation (m)",
@@ -59,7 +59,6 @@ def load_data():
     # --- LOAD POMPA ---
     df_p = conn.query("SELECT * FROM pompa", ttl=0)
     
-    # FIX: Renaming columns UNCONDITIONALLY
     df_p.columns = map(str.lower, df_p.columns)
     
     if not df_p.empty:
@@ -71,7 +70,6 @@ def load_data():
         "tanggal": "Tanggal", "site": "Site", "pit": "Pit"
     })
 
-    # Enforce structure for empty Pompa table
     if df_p.empty and 'Site' not in df_p.columns:
         df_p = pd.DataFrame(columns=[
             "Tanggal", "Site", "Pit", "Unit Code", 
@@ -132,3 +130,76 @@ def overwrite_full_db(df_s, df_p):
     engine = conn.engine 
     s_save.to_sql('sump', engine, if_exists='replace', index=False)
     p_save.to_sql('pompa', engine, if_exists='replace', index=False)
+
+# --- NEW FUNCTIONS FOR DUMMY DATA ---
+
+def generate_dummy_data():
+    """Generates 30 days of dummy data for visualization testing."""
+    conn = get_connection()
+    
+    # 1. Config
+    dummy_prefix = "dummy_"
+    site_name = f"{dummy_prefix}Site_Demo"
+    pit_name = f"{dummy_prefix}Pit_Alpha"
+    pump_units = [f"{dummy_prefix}Pump_01", f"{dummy_prefix}Pump_02"]
+    
+    end_date = date.today()
+    start_date = end_date - timedelta(days=30)
+    dates = pd.date_range(start=start_date, end=end_date)
+    
+    sump_rows = []
+    pump_rows = []
+    
+    # 2. Generate Loop
+    vol_tracker = 50000 # Starting volume
+    
+    for d in dates:
+        # Simulate Rain & GW
+        rain = random.choices([0, 0, 5, 15, 45], weights=[0.6, 0.1, 0.1, 0.1, 0.1])[0]
+        gw = 1000
+        inflow = (rain * 25 * 10) + gw
+        
+        # Simulate Pumps
+        outflow = 0
+        for p_unit in pump_units:
+            # Random performance
+            ewh_act = random.uniform(10, 20)
+            deb_act = random.uniform(400, 550)
+            outflow += (ewh_act * deb_act)
+            
+            pump_rows.append({
+                "tanggal": d, "site": site_name, "pit": pit_name, "unit_code": p_unit,
+                "debit_plan": 500, "debit_actual": deb_act, 
+                "ewh_plan": 20, "ewh_actual": ewh_act
+            })
+            
+        # Update Sump Logic
+        vol_tracker = max(0, vol_tracker + inflow - outflow)
+        elev = 10 + (vol_tracker / 10000) # Rough correlation
+        
+        sump_rows.append({
+            "tanggal": d, "site": site_name, "pit": pit_name, 
+            "elevasi_air": elev, "critical_elevation": 14.0,
+            "volume_air_survey": vol_tracker, 
+            "plan_curah_hujan": 15.0, "curah_hujan": rain,
+            "actual_catchment": 25.0, "groundwater": gw,
+            "status": "BAHAYA" if elev > 14 else "AMAN"
+        })
+        
+    # 3. Save to DB using append
+    df_s_dummy = pd.DataFrame(sump_rows)
+    df_p_dummy = pd.DataFrame(pump_rows)
+    
+    # Append to existing tables
+    engine = conn.engine
+    df_s_dummy.to_sql('sump', engine, if_exists='append', index=False)
+    df_p_dummy.to_sql('pompa', engine, if_exists='append', index=False)
+
+def delete_dummy_data():
+    """Deletes all data where Site starts with 'dummy_'."""
+    conn = get_connection()
+    with conn.session as session:
+        # Safe deletion using parameter matching or direct string check on known prefix
+        session.execute(text("DELETE FROM sump WHERE Site LIKE 'dummy_%'"))
+        session.execute(text("DELETE FROM pompa WHERE Site LIKE 'dummy_%'"))
+        session.commit()
