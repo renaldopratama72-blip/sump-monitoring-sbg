@@ -7,7 +7,7 @@ import numpy as np
 
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(
-    page_title="Mining Water Management System",
+    page_title="Mining Water Management",
     page_icon="🌊",
     layout="wide"
 )
@@ -19,226 +19,230 @@ SITE_MAP = {
     "Nusantara Energy (NE)": ["Pit S8"]
 }
 
-# --- 2. SETUP DATA DUMMY (DATA AWAL) ---
+# --- 2. SETUP DATABASE SEMENTARA (SESSION STATE) ---
 if 'data_sump' not in st.session_state:
+    # Data dummy awal (kosongkan jika mau bersih)
     data = []
+    # Kita isi sedikit sample agar dashboard tidak error saat pertama buka
     today = date.today()
-    
-    # Generate data dummy 7 hari ke belakang
-    for i in range(7): 
-        tgl = today - timedelta(days=i)
-        for site, pit_list in SITE_MAP.items():
-            for pit in pit_list:
-                # Simulasi Data
-                elevasi = np.random.uniform(5, 40)
-                crit = 45.0 if "WSL" in site else 12.0 # Contoh critical beda2
-                
-                data.append({
-                    "Tanggal": tgl,
-                    "Site": site,
-                    "Pit": pit,
-                    "Elevasi Air (m)": round(elevasi, 2),        # Poin 1
-                    "Critical Elevation (m)": crit,              # Poin 2
-                    "Volume Air Survey (m3)": int(elevasi * 2000), # Poin 3
-                    "Curah Hujan (mm)": np.random.choice([0, 0, 45, 12]), # Poin 4
-                    "Actual Catchment (Ha)": 25.5,               # Poin 5
-                    "Status": "BAHAYA" if elevasi > crit else "AMAN" # Auto Calc
-                })
-    
-    df_initial = pd.DataFrame(data)
-    df_initial = df_initial.sort_values(by=['Site', 'Pit', 'Tanggal'], ascending=[True, True, False])
-    st.session_state.data_sump = df_initial
+    data.append({
+        "Tanggal": today,
+        "Site": "Lais Coal Mine (LCM)",
+        "Pit": "Pit Wijaya Barat",
+        "Elevasi Air (m)": 11.5,
+        "Critical Elevation (m)": 12.0,
+        "Volume Air Survey (m3)": 5000,
+        "Curah Hujan (mm)": 12.0,
+        "Actual Catchment (Ha)": 25.0,
+        "Status": "AMAN"
+    })
+    st.session_state.data_sump = pd.DataFrame(data)
 
 if 'data_pompa' not in st.session_state:
-    pump_data = []
-    # Dummy data untuk pompa
-    dates = st.session_state.data_sump['Tanggal'].unique()
-    for d in dates:
-        # Contoh data
-        pump_data.append({
-            "Tanggal": d, "Site": "Lais Coal Mine (LCM)", "Pit": "Pit Wijaya Barat", 
-            "Unit Code": "WP1203", 
-            "Debit Plan (m3/h)": 500,     # Poin 6a
-            "Debit Actual (m3/h)": 480,   # Poin 6b
-            "HM Running": 12.5            # Tambahan wajib untuk hitung total volume keluar
-        })
-        pump_data.append({
-            "Tanggal": d, "Site": "Wiraduta Sejahtera Langgeng (WSL)", "Pit": "Pit F01", 
-            "Unit Code": "WP2001", 
-            "Debit Plan (m3/h)": 400, 
-            "Debit Actual (m3/h)": 350,
-            "HM Running": 20.0
-        })
-    
-    st.session_state.data_pompa = pd.DataFrame(pump_data)
+    st.session_state.data_pompa = pd.DataFrame(columns=[
+        "Tanggal", "Site", "Pit", "Unit Code", 
+        "Debit Plan (m3/h)", "Debit Actual (m3/h)", "HM Running"
+    ])
 
-# --- 3. SIDEBAR & FILTER ---
-st.sidebar.title("🌊 Sump Monitor")
-menu = st.sidebar.radio("Menu Utama:", ["Dashboard Analisis", "Input & Edit Data"])
+# --- 3. SIDEBAR MENU ---
+st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2942/2942076.png", width=50) # Logo Placeholder
+st.sidebar.title("Sump Monitor")
+menu = st.sidebar.radio("Menu:", ["Dashboard Utama", "Input Data Harian"])
 
 st.sidebar.divider()
-st.sidebar.subheader("Filter Lokasi")
+st.sidebar.caption("Filter Dashboard:")
 selected_site = st.sidebar.selectbox("Pilih Site:", ["All Sites"] + list(SITE_MAP.keys()))
 
 selected_pit = "All Pits"
 if selected_site != "All Sites":
-    available_pits = ["All Pits"] + SITE_MAP[selected_site]
-    selected_pit = st.sidebar.selectbox("Pilih Pit:", available_pits)
+    selected_pit = st.sidebar.selectbox("Pilih Pit:", ["All Pits"] + SITE_MAP[selected_site])
 
-# Filter Logic
-df_sump = st.session_state.data_sump.copy()
-df_pompa = st.session_state.data_pompa.copy()
-
-if selected_site != "All Sites":
-    df_sump = df_sump[df_sump['Site'] == selected_site]
-    df_pompa = df_pompa[df_pompa['Site'] == selected_site]
-    if selected_pit != "All Pits":
-        df_sump = df_sump[df_sump['Pit'] == selected_pit]
-        df_pompa = df_pompa[df_pompa['Pit'] == selected_pit]
-
-# --- 4. HALAMAN INPUT & EDIT (SESUAI REQUEST) ---
-if menu == "Input & Edit Data":
+# --- 4. MENU INPUT DATA (FORM STYLE) ---
+if menu == "Input Data Harian":
     st.title("📝 Input Data Harian")
-    st.markdown("Silakan isi 6 poin data utama di bawah ini.")
-    
-    # --- TAB 1: DATA SUMP (5 POIN PERTAMA) ---
-    st.subheader("1. Data Sump & Hidrologi")
-    st.info("Poin Input: Elevasi, Critical, Volume Survey, Hujan, Catchment.")
-    
-    sump_config = {
-        "Site": st.column_config.SelectboxColumn(options=list(SITE_MAP.keys()), required=True),
-        "Pit": st.column_config.SelectboxColumn(options=["Pit Wijaya Barat", "Pit Wijaya Timur", "Pit F01", "Pit F02", "Pit S8"], required=True),
-        "Tanggal": st.column_config.DateColumn(format="DD/MM/YYYY"),
-        
-        # --- 5 POIN INPUT UTAMA ---
-        "Elevasi Air (m)": st.column_config.NumberColumn(help="Point 1: Elevasi Aktual", format="%.2f m", required=True),
-        "Critical Elevation (m)": st.column_config.NumberColumn(help="Point 2: Batas Kritis", format="%.2f m", required=True),
-        "Volume Air Survey (m3)": st.column_config.NumberColumn(help="Point 3: Volume by Survey", format="%d m³", required=True),
-        "Curah Hujan (mm)": st.column_config.NumberColumn(help="Point 4: Rain Gauge", format="%.1f mm"),
-        "Actual Catchment (Ha)": st.column_config.NumberColumn(help="Point 5: Luasan Catchment Aktual", format="%.2f Ha"),
-        # --------------------------
-        
-        "Status": st.column_config.TextColumn(disabled=True) # Auto-calculated
-    }
-    
-    edited_sump = st.data_editor(
-        df_sump, 
-        num_rows="dynamic", use_container_width=True,
-        column_config=sump_config,
-        key="editor_sump"
-    )
-    
-    if st.button("Simpan Data Sump"):
-        st.session_state.data_sump = edited_sump
-        # Update Logic Status
-        st.session_state.data_sump['Status'] = np.where(
-            st.session_state.data_sump['Elevasi Air (m)'] > st.session_state.data_sump['Critical Elevation (m)'], 
-            'BAHAYA', 'AMAN'
-        )
-        st.success("✅ Data Sump Tersimpan!")
-        st.rerun()
+    st.markdown("Silakan isi formulir di bawah ini dan tekan tombol **Simpan**.")
+
+    # --- BAGIAN A: PILIH LOKASI & TANGGAL ---
+    with st.container():
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            in_date = st.date_input("Tanggal Data", date.today())
+        with c2:
+            in_site = st.selectbox("Site", list(SITE_MAP.keys()), key="in_site")
+        with c3:
+            # Pit menyesuaikan Site
+            in_pit = st.selectbox("Pit", SITE_MAP[in_site], key="in_pit")
 
     st.divider()
 
-    # --- TAB 2: DATA POMPA (POIN KE-6) ---
-    st.subheader("2. Data Debit Pompa")
-    st.info("Poin Input: Debit Plan vs Debit Actual.")
+    # --- BAGIAN B: FORMULIR DATA SUMP ---
+    col_form1, col_form2 = st.columns([1, 1])
     
-    pump_config = {
-            "Site": st.column_config.SelectboxColumn(options=list(SITE_MAP.keys())),
-            "Pit": st.column_config.SelectboxColumn(options=["Pit Wijaya Barat", "Pit Wijaya Timur", "Pit F01", "Pit F02", "Pit S8"]),
-            "Unit Code": st.column_config.TextColumn(required=True),
+    with col_form1:
+        st.subheader("1. Data Sump (Air)")
+        with st.form("form_sump"):
+            st.caption("Isi data elevasi dan hidrologi:")
             
-            # --- POIN 6 INPUT UTAMA ---
-            "Debit Plan (m3/h)": st.column_config.NumberColumn(help="Point 6a: Kapasitas Plan", format="%d", required=True),
-            "Debit Actual (m3/h)": st.column_config.NumberColumn(help="Point 6b: Flowrate Aktual di lapangan", format="%d", required=True),
-            # --------------------------
+            f_elev = st.number_input("1. Elevasi Air Aktual (m)", min_value=0.0, format="%.2f")
+            f_crit = st.number_input("2. Critical Elevation (m)", min_value=0.0, value=12.0, format="%.2f")
+            f_vol  = st.number_input("3. Volume Air Survey (m3)", min_value=0, step=100)
+            f_rain = st.number_input("4. Curah Hujan (mm)", min_value=0.0, format="%.1f")
+            f_catch = st.number_input("5. Actual Catchment (Ha)", min_value=0.0, format="%.2f")
             
-            "HM Running": st.column_config.NumberColumn(label="Jam Jalan (HM)", help="Diperlukan untuk hitung total volume keluar", format="%.1f")
-    }
-    
-    edited_pompa = st.data_editor(
-        df_pompa,
-        num_rows="dynamic", use_container_width=True,
-        column_config=pump_config,
-        key="editor_pompa"
-    )
-    
-    if st.button("Simpan Data Pompa"):
-        st.session_state.data_pompa = edited_pompa
-        st.success("✅ Data Pompa Tersimpan!")
-        st.rerun()
+            # TOMBOL SIMPAN
+            btn_sump = st.form_submit_button("💾 SIMPAN DATA SUMP", type="primary")
+            
+            if btn_sump:
+                # LOGIKA AMAN / BAHAYA
+                if f_elev > f_crit:
+                    status_cek = "BAHAYA"
+                else:
+                    status_cek = "AMAN"
+                
+                # Simpan ke Database (Session State)
+                new_sump = {
+                    "Tanggal": in_date,
+                    "Site": in_site,
+                    "Pit": in_pit,
+                    "Elevasi Air (m)": f_elev,
+                    "Critical Elevation (m)": f_crit,
+                    "Volume Air Survey (m3)": f_vol,
+                    "Curah Hujan (mm)": f_rain,
+                    "Actual Catchment (Ha)": f_catch,
+                    "Status": status_cek
+                }
+                st.session_state.data_sump = pd.concat([pd.DataFrame([new_sump]), st.session_state.data_sump], ignore_index=True)
+                
+                if status_cek == "BAHAYA":
+                    st.error(f"Data Tersimpan! Status: BAHAYA (Elevasi {f_elev} > Critical {f_crit})")
+                else:
+                    st.success("Data Tersimpan! Status: AMAN.")
 
-# --- 5. HALAMAN DASHBOARD (VISUALISASI HASIL INPUT) ---
-elif menu == "Dashboard Analisis":
-    st.title(f"Dashboard: {selected_site}")
-    if selected_pit != "All Pits":
-        st.caption(f"Lokasi: {selected_pit}")
+    # --- BAGIAN C: FORMULIR DATA POMPA ---
+    with col_form2:
+        st.subheader("2. Data Pompa (Unit)")
+        with st.form("form_pompa"):
+            st.caption("Input performa unit pompa:")
+            
+            p_unit = st.text_input("Kode Unit (Contoh: WP1203)")
+            p_plan = st.number_input("Debit Plan (m3/h)", min_value=0)
+            p_act  = st.number_input("Debit Actual (m3/h)", min_value=0)
+            p_hm   = st.number_input("Jam Jalan / HM Running", min_value=0.0, format="%.1f")
+            
+            # TOMBOL SIMPAN
+            btn_pompa = st.form_submit_button("💾 SIMPAN DATA POMPA")
+            
+            if btn_pompa:
+                if p_unit == "":
+                    st.warning("Harap isi Kode Unit!")
+                else:
+                    new_pump = {
+                        "Tanggal": in_date,
+                        "Site": in_site,
+                        "Pit": in_pit,
+                        "Unit Code": p_unit,
+                        "Debit Plan (m3/h)": p_plan,
+                        "Debit Actual (m3/h)": p_act,
+                        "HM Running": p_hm
+                    }
+                    st.session_state.data_pompa = pd.concat([pd.DataFrame([new_pump]), st.session_state.data_pompa], ignore_index=True)
+                    st.success(f"Unit {p_unit} berhasil disimpan!")
+
+    st.divider()
     
-    if not df_sump.empty:
-        # A. KOMBINASI CHART: ELEVASI vs VOLUME
-        st.subheader("Monitoring Elevasi & Volume")
+    # --- TABEL HASIL INPUT (UNTUK CEK) ---
+    with st.expander("Lihat Data yang Sudah Diinput Hari Ini"):
+        df_today = st.session_state.data_sump[st.session_state.data_sump['Tanggal'] == in_date]
+        st.dataframe(df_today, use_container_width=True)
+
+# --- 5. MENU DASHBOARD ---
+elif menu == "Dashboard Utama":
+    # Filter Data
+    df_sump = st.session_state.data_sump.copy()
+    df_pompa = st.session_state.data_pompa.copy()
+    
+    if selected_site != "All Sites":
+        df_sump = df_sump[df_sump['Site'] == selected_site]
+        df_pompa = df_pompa[df_pompa['Site'] == selected_site]
+        if selected_pit != "All Pits":
+            df_sump = df_sump[df_sump['Pit'] == selected_pit]
+            df_pompa = df_pompa[df_pompa['Pit'] == selected_pit]
+
+    st.title(f"Dashboard Monitor: {selected_site}")
+    
+    if df_sump.empty:
+        st.warning("Belum ada data inputan untuk filter ini.")
+    else:
+        # A. KARTU STATUS TERKINI
+        # Ambil data paling baru berdasarkan tanggal input
+        latest_entry = df_sump.sort_values(by="Tanggal", ascending=False).iloc[0]
         
-        # Agregasi data jika All Sites dipilih
-        chart_df = df_sump.groupby('Tanggal').agg({
-            'Elevasi Air (m)': 'mean', 
-            'Volume Air Survey (m3)': 'sum', 
-            'Critical Elevation (m)': 'mean'
-        }).reset_index()
-
-        fig_combo = go.Figure()
+        c1, c2, c3, c4 = st.columns(4)
+        
+        status_now = latest_entry['Status']
+        # Logic Warna Kartu
+        color_status = "red" if status_now == "BAHAYA" else "green"
+        
+        with c1:
+            st.markdown(f"### Status: :{color_status}[{status_now}]")
+            st.caption(f"Update: {latest_entry['Tanggal']}")
+        with c2:
+            st.metric("Elevasi Aktual", f"{latest_entry['Elevasi Air (m)']} m")
+            st.caption(f"Batas Kritis: {latest_entry['Critical Elevation (m)']} m")
+        with c3:
+            st.metric("Volume Air", f"{latest_entry['Volume Air Survey (m3)']:,.0f} m³")
+        with c4:
+            st.metric("Curah Hujan", f"{latest_entry['Curah Hujan (mm)']} mm")
+            
+        st.divider()
+        
+        # B. GRAFIK UTAMA (DUAL AXIS)
+        st.subheader("Grafik Elevasi vs Volume")
+        
+        # Urutkan data berdasarkan tanggal untuk grafik
+        chart_df = df_sump.sort_values(by="Tanggal")
+        
+        fig = go.Figure()
+        
         # Bar: Volume
-        fig_combo.add_trace(go.Bar(
+        fig.add_trace(go.Bar(
             x=chart_df['Tanggal'], y=chart_df['Volume Air Survey (m3)'],
-            name='Volume Air (m³)', marker_color='lightblue', opacity=0.6, yaxis='y2'
-        ))
-        # Line: Elevasi
-        fig_combo.add_trace(go.Scatter(
-            x=chart_df['Tanggal'], y=chart_df['Elevasi Air (m)'],
-            name='Elevasi (m)', mode='lines+markers', line=dict(color='blue', width=3)
-        ))
-        # Line: Critical
-        fig_combo.add_trace(go.Scatter(
-            x=chart_df['Tanggal'], y=chart_df['Critical Elevation (m)'],
-            name='Critical Level', mode='lines', line=dict(color='red', width=2, dash='dash')
+            name='Volume (m3)', marker_color='lightblue', opacity=0.5, yaxis='y2'
         ))
         
-        fig_combo.update_layout(
+        # Line: Critical Level (Batas)
+        fig.add_trace(go.Scatter(
+            x=chart_df['Tanggal'], y=chart_df['Critical Elevation (m)'],
+            name='Critical Level', mode='lines', 
+            line=dict(color='red', width=2, dash='dash')
+        ))
+        
+        # Line: Elevasi Aktual
+        fig.add_trace(go.Scatter(
+            x=chart_df['Tanggal'], y=chart_df['Elevasi Air (m)'],
+            name='Elevasi Aktual', mode='lines+markers',
+            line=dict(color='blue', width=3)
+        ))
+        
+        # Layout
+        fig.update_layout(
             yaxis=dict(title="Elevasi (m)", side="left"),
-            yaxis2=dict(title="Volume (m³)", side="right", overlaying="y", showgrid=False),
-            legend=dict(orientation="h", y=1.1, x=0)
+            yaxis2=dict(title="Volume (m3)", side="right", overlaying="y", showgrid=False),
+            hovermode="x unified",
+            legend=dict(orientation="h", y=1.1)
         )
-        st.plotly_chart(fig_combo, use_container_width=True)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("Curah Hujan & Catchment")
-        if not df_sump.empty:
-            # Hitung Volume Hujan Masuk (Rain * Catchment)
-            df_sump['Rain Volume (m3)'] = df_sump['Curah Hujan (mm)'] * df_sump['Actual Catchment (Ha)'] * 10
-            
-            fig_rain = px.bar(
-                df_sump, x='Tanggal', y='Rain Volume (m3)', 
-                title="Estimasi Volume Hujan Masuk (Catchment x CH)",
-                labels={'Rain Volume (m3)': 'Volume Hujan (m³)'}
-            )
-            st.plotly_chart(fig_rain, use_container_width=True)
-            
-    with col2:
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # C. DATA POMPA
         st.subheader("Performa Pompa (Plan vs Actual)")
         if not df_pompa.empty:
-            last_date = df_pompa['Tanggal'].max()
-            df_last_pump = df_pompa[df_pompa['Tanggal'] == last_date]
-            
-            fig_pump = go.Figure()
-            fig_pump.add_trace(go.Bar(
-                x=df_last_pump['Unit Code'], y=df_last_pump['Debit Plan (m3/h)'],
-                name='Plan Debit', marker_color='lightgrey'
-            ))
-            fig_pump.add_trace(go.Bar(
-                x=df_last_pump['Unit Code'], y=df_last_pump['Debit Actual (m3/h)'],
-                name='Actual Debit', marker_color='green'
-            ))
-            fig_pump.update_layout(barmode='group')
+            # Grouping jika ada banyak unit, ambil data terbaru
+            fig_pump = px.bar(
+                df_pompa, x="Unit Code", y=["Debit Plan (m3/h)", "Debit Actual (m3/h)"],
+                barmode="group",
+                color_discrete_map={"Debit Plan (m3/h)": "grey", "Debit Actual (m3/h)": "green"},
+                title="Perbandingan Debit Pompa"
+            )
             st.plotly_chart(fig_pump, use_container_width=True)
+        else:
+            st.info("Belum ada data pompa yang diinput.")
