@@ -225,7 +225,7 @@ with tab_dash:
         st.markdown("---")
 
         # B. GRAFIK SUMP
-        st.subheader("📈 Tren Hidrologi Sump")
+        st.subheader("📈 Sump Condition")
         fig_sump = go.Figure()
         # Warna Bar disesuaikan agak keunguan/abu agar tidak nabrak dengan logo orange
         fig_sump.add_trace(go.Bar(
@@ -473,3 +473,4 @@ with tab_admin:
         
         st.divider()
         st.json(st.session_state['site_map'])
+
