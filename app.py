@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS Styling
+# CSS Styling: Menambahkan style khusus untuk Warning Water Balance
 st.markdown("""
 <style>
     .stApp { background-color: #f4f6f9; }
@@ -21,8 +21,6 @@ st.markdown("""
         background-color: #ffffff; border: 1px solid #e0e0e0;
         padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
-    .stAlert { font-weight: bold; border: 1px solid #ddd; }
-    section[data-testid="stSidebar"] { background-color: #ffffff; }
     .analysis-box {
         background-color: #e8f6f3; padding: 15px; border-radius: 10px; border-left: 5px solid #1abc9c;
     }
@@ -31,6 +29,9 @@ st.markdown("""
     }
     .danger-box {
         background-color: #fdedec; padding: 15px; border-radius: 10px; border-left: 5px solid #e74c3c;
+    }
+    .wb-alert {
+        background-color: #ffcccc; color: #cc0000; padding: 10px; border-radius: 5px; font-weight: bold; margin-bottom: 10px; border: 1px solid #ff0000;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -196,20 +197,28 @@ else:
     df_p_display = df_p_filt.groupby('Tanggal')[['Debit Plan (m3/h)', 'Debit Actual (m3/h)', 'EWH Plan', 'EWH Actual']].mean().reset_index()
     title_suffix = "Rata-rata Semua Unit"
 
-# 2. Water Balance Calculation (TOTAL IN vs TOTAL OUT)
-# Ini harus pakai SEMUA unit pompa, karena level air dipengaruhi total keluaran
+# 2. WATER BALANCE CALCULATION (CRITICAL PART)
+# Menggunakan Total Volume Keluar dari SEMUA pompa di pit tersebut
 df_p_total = df_p_filt.copy()
 df_p_total['Volume Out'] = df_p_total['Debit Actual (m3/h)'] * df_p_total['EWH Actual']
 daily_out = df_p_total.groupby(['Site', 'Pit', 'Tanggal'])['Volume Out'].sum().reset_index()
 
 df_wb = pd.merge(df_s_filt, daily_out, on=['Site', 'Pit', 'Tanggal'], how='left')
 df_wb['Volume Out'] = df_wb['Volume Out'].fillna(0)
-# Rumus Estimasi: Hujan (mm) * Catchment (Ha) * 10 = m3
+
+# Rumus Volume Hujan: Curah Hujan (mm) * Catchment (Ha) * 10
 df_wb['Volume In (Rain)'] = df_wb['Curah Hujan (mm)'] * df_wb['Actual Catchment (Ha)'] * 10
+
 df_wb = df_wb.sort_values(by="Tanggal")
 df_wb['Volume Kemarin'] = df_wb['Volume Air Survey (m3)'].shift(1)
+
+# RUMUS UTAMA: Vol Teoritis = Vol Kemarin + Vol Hujan - Vol Pompa
 df_wb['Volume Teoritis'] = df_wb['Volume Kemarin'] + df_wb['Volume In (Rain)'] - df_wb['Volume Out']
+
+# Selisih = Vol Survey - Vol Teoritis
 df_wb['Diff Volume'] = df_wb['Volume Air Survey (m3)'] - df_wb['Volume Teoritis']
+
+# Error % = (Selisih Absolut / Volume Survey) * 100
 df_wb['Error %'] = (df_wb['Diff Volume'].abs() / df_wb['Volume Air Survey (m3)']) * 100
 df_wb_dash = df_wb # Data for dashboard
 
@@ -238,18 +247,82 @@ with tab_dash:
     else:
         last = df_wb_dash.iloc[-1]
         
-        # 1. Metrics Top
+        # --- METRICS SECTION ---
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Elevasi Air", f"{last['Elevasi Air (m)']} m", f"Crit: {last['Critical Elevation (m)']}")
-        c2.metric("Vol Survey", f"{last['Volume Air Survey (m3)']:,.0f} m³")
+        c2.metric("Vol Survey (Aktual)", f"{last['Volume Air Survey (m3)']:,.0f} m³")
         c3.metric("Rainfall (Bulan)", f"{df_wb_dash['Curah Hujan (mm)'].sum()} mm")
-        clr = "#e74c3c" if last['Status'] == "BAHAYA" else "#27ae60"
-        c4.markdown(f"<div style='background-color:{clr};color:white;padding:10px;border-radius:5px;text-align:center;'>{last['Status']}</div>", unsafe_allow_html=True)
+        
+        # Logic Status Box
+        clr = "#27ae60"
+        status_txt = "AMAN"
+        if last['Status'] == "BAHAYA":
+            clr = "#e74c3c"; status_txt = "BAHAYA"
+        
+        c4.markdown(f"<div style='background-color:{clr};color:white;padding:10px;border-radius:5px;text-align:center;'>{status_txt}</div>", unsafe_allow_html=True)
         
         st.markdown("---")
         
-        # 2. Grafik Elevasi
-        st.subheader("🌊 1. Tren Elevasi & Volume (Sump)")
+        # --- 1. WATER BALANCE SECTION (HIGHLIGHT) ---
+        st.subheader("⚖️ Water Balance: Survey vs Hitungan")
+        
+        # Cek Error > 5%
+        last_error = last['Error %']
+        is_wb_critical = False
+        
+        if last_error > 5.0 or pd.isna(last_error):
+            is_wb_critical = True
+            st.markdown(f"""
+            <div class="wb-alert">
+                ⚠️ PERINGATAN WATER BALANCE: Error {last_error:.1f}% (Melebihi Toleransi 5%)<br>
+                Selisih Volume: {last['Diff Volume']:,.0f} m³
+            </div>
+            """, unsafe_allow_html=True)
+        
+        col_wb1, col_wb2 = st.columns([2, 1])
+        
+        with col_wb1:
+            # Grafik Masuk vs Keluar
+            fig_wb = go.Figure()
+            # Masuk (Positif)
+            fig_wb.add_trace(go.Bar(
+                x=df_wb_dash['Tanggal'], y=df_wb_dash['Volume In (Rain)'], 
+                name='(+) Air Masuk (Hujan)', marker_color='#3498db'
+            ))
+            # Keluar (Positif untuk visual perbandingan)
+            fig_wb.add_trace(go.Bar(
+                x=df_wb_dash['Tanggal'], y=df_wb_dash['Volume Out'], 
+                name='(-) Air Keluar (Pompa)', marker_color='#e74c3c'
+            ))
+            
+            fig_wb.update_layout(
+                title="Perbandingan Volume: Air Hujan Masuk vs Pompa Keluar",
+                barmode='group', 
+                yaxis=dict(title="Volume Air (m³)"), 
+                legend=dict(orientation='h', y=1.1),
+                height=400, margin=dict(t=30)
+            )
+            st.plotly_chart(fig_wb, use_container_width=True)
+            
+        with col_wb2:
+            st.caption("📋 **Tabel Validasi Water Balance**")
+            # Menampilkan tabel ringkas untuk validasi
+            df_show = df_wb_dash[['Tanggal', 'Volume Air Survey (m3)', 'Volume Teoritis', 'Diff Volume', 'Error %']].copy()
+            df_show['Tanggal'] = df_show['Tanggal'].dt.strftime('%d-%m')
+            
+            # Highlight kolom Error jika > 5% (Visualisasi sederhana di tabel streamlit)
+            st.dataframe(df_show.style.format({
+                'Volume Air Survey (m3)': '{:,.0f}',
+                'Volume Teoritis': '{:,.0f}', 
+                'Diff Volume': '{:,.0f}',
+                'Error %': '{:.1f}%'
+            }), hide_index=True, use_container_width=True, height=350)
+            
+            st.info("ℹ️ Vol Teoritis = Vol Kemarin + Hujan - Pompa")
+
+        # --- 2. GRAFIK ELEVASI ---
+        st.markdown("---")
+        st.subheader("🌊 Tren Elevasi & Volume")
         fig_s = go.Figure()
         fig_s.add_trace(go.Bar(
             x=df_wb_dash['Tanggal'], y=df_wb_dash['Volume Air Survey (m3)'], name='Vol Survey', 
@@ -262,46 +335,13 @@ with tab_dash:
         fig_s.add_trace(go.Scatter(x=df_wb_dash['Tanggal'], y=df_wb_dash['Critical Elevation (m)'], name='Limit', line=dict(color='red', dash='dash')))
         fig_s.update_layout(
             yaxis2=dict(overlaying='y', side='right', showgrid=False, title="Volume (m3)"),
-            yaxis=dict(title="Elevasi (m)"), legend=dict(orientation='h', y=1.1), height=400, margin=dict(t=30)
+            yaxis=dict(title="Elevasi (m)"), legend=dict(orientation='h', y=1.1), height=350, margin=dict(t=30)
         )
         st.plotly_chart(fig_s, use_container_width=True)
 
-        # 3. Grafik WATER BALANCE (Baru)
+        # --- 3. PERFORMA POMPA ---
         st.markdown("---")
-        st.subheader("⚖️ 2. Water Balance: Masuk (Hujan) vs Keluar (Pompa)")
-        
-        col_wb1, col_wb2 = st.columns([2, 1])
-        
-        with col_wb1:
-            fig_wb = go.Figure()
-            # Masuk (Positif)
-            fig_wb.add_trace(go.Bar(
-                x=df_wb_dash['Tanggal'], y=df_wb_dash['Volume In (Rain)'], 
-                name='Vol Masuk (Hujan)', marker_color='#3498db'
-            ))
-            # Keluar (Positif untuk perbandingan, atau Negatif jika ingin visual zero axis)
-            fig_wb.add_trace(go.Bar(
-                x=df_wb_dash['Tanggal'], y=df_wb_dash['Volume Out'], 
-                name='Vol Keluar (Pompa)', marker_color='#e74c3c'
-            ))
-            fig_wb.update_layout(
-                barmode='group', 
-                yaxis=dict(title="Volume Air (m³)"), 
-                legend=dict(orientation='h', y=1.1),
-                height=400, margin=dict(t=20)
-            )
-            st.plotly_chart(fig_wb, use_container_width=True)
-            
-        with col_wb2:
-            st.caption("📋 **Tabel Detail Neraca Air**")
-            # Menampilkan tabel ringkas
-            df_show = df_wb_dash[['Tanggal', 'Volume In (Rain)', 'Volume Out', 'Diff Volume', 'Error %']].copy()
-            df_show['Tanggal'] = df_show['Tanggal'].dt.strftime('%d-%m')
-            st.dataframe(df_show, hide_index=True, use_container_width=True, height=350)
-
-        # 4. Grafik Performa Pompa
-        st.markdown("---")
-        st.subheader(f"⚙️ 3. Performa Pompa ({title_suffix})")
+        st.subheader(f"⚙️ Performa Pompa ({title_suffix})")
         col_p1, col_p2 = st.columns(2)
         with col_p1:
             st.caption(f"**Debit: Plan vs Actual (m3/h)**")
@@ -318,9 +358,9 @@ with tab_dash:
             fig_e.update_layout(legend=dict(orientation='h', y=1.1), height=250, margin=dict(t=20))
             st.plotly_chart(fig_e, use_container_width=True)
 
-        # 5. Analisa & Rekomendasi
+        # --- 4. ANALISA & REKOMENDASI ---
         st.markdown("---")
-        st.subheader("🧠 4. Analisa & Rekomendasi")
+        st.subheader("🧠 Analisa & Rekomendasi")
         
         last_pump_data = df_p_display[df_p_display['Tanggal'] == last['Tanggal']]
         if not last_pump_data.empty:
@@ -330,22 +370,26 @@ with tab_dash:
             avg_debit_act = 0; avg_debit_plan = 500
 
         col_an, col_rec = st.columns(2)
+        
+        # LOGIC WARNA & PESAN
+        if is_wb_critical:
+            style_box = "danger-box" # Merah karena WB Error Tinggi
+            header_text = "🚨 PERINGATAN: DATA TIDAK BALANCE"
+        elif last['Elevasi Air (m)'] >= last['Critical Elevation (m)']:
+            style_box = "danger-box"; header_text = "🚨 BAHAYA: ELEVASI TINGGI"
+        elif last['Elevasi Air (m)'] >= (last['Critical Elevation (m)'] - 1.0):
+            style_box = "rec-box"; header_text = "⚠️ SIAGA"
+        else:
+            style_box = "analysis-box"; header_text = "✅ KONDISI AMAN"
+
         with col_an:
-            if last['Elevasi Air (m)'] >= last['Critical Elevation (m)']:
-                style_box = "danger-box"; header_text = "🚨 BAHAYA"; status_text = "Elevasi Melebihi Limit!"
-            elif last['Elevasi Air (m)'] >= (last['Critical Elevation (m)'] - 1.0):
-                style_box = "rec-box"; header_text = "⚠️ SIAGA"; status_text = "Elevasi Mendekati Limit."
-            else:
-                style_box = "analysis-box"; header_text = "✅ AMAN"; status_text = "Level air terkendali."
-            
             st.markdown(f"""
             <div class="{style_box}">
                 <h4>{header_text}</h4>
-                <p><b>Status:</b> {status_text}</p>
                 <ul>
-                    <li><b>Neraca Air Hari Ini:</b><br> 
-                        Masuk: {last['Volume In (Rain)']:,.0f} m³ vs Keluar: {last['Volume Out']:,.0f} m³</li>
-                    <li><b>Selisih Balance:</b> {last['Diff Volume']:,.0f} m³ ({last['Error %']:.1f}%)</li>
+                    <li><b>Status Water Balance:</b> Error {last_error:.1f}%.</li>
+                    <li><b>Status Elevasi:</b> {last['Elevasi Air (m)']} m (Limit: {last['Critical Elevation (m)']} m).</li>
+                    <li><b>Volume Survey:</b> {last['Volume Air Survey (m3)']:,.0f} m³.</li>
                 </ul>
             </div>
             """, unsafe_allow_html=True)
@@ -353,15 +397,20 @@ with tab_dash:
         with col_rec:
             st.markdown('<div class="rec-box"><h4>🛠️ REKOMENDASI</h4>', unsafe_allow_html=True)
             rec_list = []
+            
+            # REKOMENDASI KHUSUS WATER BALANCE
+            if is_wb_critical:
+                rec_list.append("🔴 <b>CEK DEBIT POMPA ACTUAL:</b> Kemungkinan debit aktual lebih kecil dari laporan, atau unit breakdown tidak tercatat.")
+                rec_list.append("🔴 <b>CEK CATCHMENT AREA:</b> Pastikan luasan catchment area (Ha) terupdate sesuai progress tambang.")
+                rec_list.append("🔴 <b>CEK OTHER INFLOW:</b> Periksa potensi <b>Seepage atau Groundwater</b> yang masuk ke Sump namun belum terhitung.")
+            
+            # REKOMENDASI OPERASIONAL
             if last['Elevasi Air (m)'] >= last['Critical Elevation (m)']:
                 rec_list.append("⛔ <b>STOP OPERASI & EVAKUASI UNIT.</b>")
-                rec_list.append("🚀 Nyalakan semua pompa cadangan.")
             if avg_debit_act < (avg_debit_plan * 0.85):
                 rec_list.append(f"🔧 Cek Unit <b>{selected_unit}</b>: Debit di bawah target.")
-            if last['Volume Out'] < last['Volume In (Rain)']:
-                rec_list.append("📉 <b>Volume Masuk > Keluar:</b> Tingkatkan jam jalan pompa besok.")
             
-            if not rec_list: st.markdown("- ✅ Lanjutkan operasi normal.")
+            if not rec_list: st.markdown("- ✅ Data Valid & Operasi Aman.")
             for r in rec_list: st.markdown(f"- {r}", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
