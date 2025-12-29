@@ -3,15 +3,17 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import date, timedelta
 import numpy as np
+import os
 
 # --- 1. SETUP & CONFIG ---
 st.set_page_config(
-    page_title="Mining Water Management",
-    page_icon="🌊",
+    page_title="Bara Tama Wijaya Water Management",
+    page_icon="🔥", # Icon api/bara sesuai logo
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# Styling Custom (CSS)
 st.markdown("""
 <style>
     .stApp { background-color: #f4f6f9; }
@@ -20,6 +22,10 @@ st.markdown("""
         padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
     .stAlert { font-weight: bold; }
+    /* Mempercantik Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #ffffff;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -38,12 +44,12 @@ if 'logged_in' not in st.session_state:
 if 'username' not in st.session_state:
     st.session_state['username'] = ''
 
-# B. DYNAMIC SITE MAP
+# B. DYNAMIC SITE MAP (UPDATED NAMING: SUMP)
 if 'site_map' not in st.session_state:
     st.session_state['site_map'] = {
-        "Lais Coal Mine (LCM)": ["Pit Wijaya Barat", "Pit Wijaya Timur"],
-        "Wiraduta Sejahtera Langgeng (WSL)": ["Pit F01", "Pit F02"],
-        "Nusantara Energy (NE)": ["Pit S8"]
+        "Lais Coal Mine (LCM)": ["Sump Wijaya Barat", "Sump Wijaya Timur"],
+        "Wiraduta Sejahtera Langgeng (WSL)": ["Sump F01", "Sump F02"],
+        "Nusantara Energy (NE)": ["Sump S8"]
     }
 
 # C. DATA GENERATOR
@@ -96,14 +102,24 @@ if 'data_pompa' not in st.session_state:
 st.session_state.data_sump['Tanggal'] = pd.to_datetime(st.session_state.data_sump['Tanggal'])
 st.session_state.data_pompa['Tanggal'] = pd.to_datetime(st.session_state.data_pompa['Tanggal'])
 
-# --- 3. SIDEBAR (SELALU MUNCUL) ---
+# --- 3. SIDEBAR (LOGO & FILTER) ---
 with st.sidebar:
-    st.title("🌊 Water Control")
+    # --- LOGO AREA ---
+    logo_file = "1.bara tama wijaya.jpg"
+    if os.path.exists(logo_file):
+        st.image(logo_file, use_container_width=True)
+    else:
+        # Fallback jika gambar belum diupload ke folder yang sama
+        st.warning(f"File '{logo_file}' tidak ditemukan. Pastikan file ada di folder yang sama.")
+        st.markdown("## BARA TAMA WIJAYA")
+    
+    st.markdown("<h3 style='text-align: center;'>Water Management</h3>", unsafe_allow_html=True)
+    st.divider()
     
     # STATUS LOGIN
     if st.session_state['logged_in']:
         st.success(f"👤 Login: {st.session_state['username']}")
-        if st.button("Logout"):
+        if st.button("Logout", use_container_width=True):
             st.session_state['logged_in'] = False
             st.session_state['username'] = ''
             st.rerun()
@@ -112,14 +128,14 @@ with st.sidebar:
 
     st.divider()
 
-    # PILIH SITE (Tanpa "All Sites")
+    # PILIH SITE
     current_sites = list(st.session_state['site_map'].keys())
-    selected_site = st.selectbox("📍 Site", current_sites)
+    selected_site = st.selectbox("📍 Pilih Site", current_sites)
     
-    pit_options = ["All Pits"]
+    pit_options = ["All Sumps"]
     if selected_site: 
         pit_options += st.session_state['site_map'][selected_site]
-    selected_pit = st.selectbox("⛏️ Pit", pit_options)
+    selected_pit = st.selectbox("💧 Pilih Sump", pit_options)
     
     st.caption("FILTER WAKTU")
     avail_years = sorted(st.session_state.data_sump['Tanggal'].dt.year.unique(), reverse=True)
@@ -137,7 +153,7 @@ df_p = st.session_state.data_pompa.copy()
 df_s = df_s[df_s['Site'] == selected_site]
 df_p = df_p[df_p['Site'] == selected_site]
 
-if selected_pit != "All Pits":
+if selected_pit != "All Sumps":
     df_s = df_s[df_s['Pit'] == selected_pit]
     df_p = df_p[df_p['Pit'] == selected_pit]
 
@@ -184,16 +200,18 @@ def render_login_form():
                 st.error("Username atau Password Salah")
 
 # --- 5. TABS ---
+# Header Utama
+st.markdown(f"## 🏢 Bara Tama Wijaya: {selected_site}")
 tab_dash, tab_input, tab_db, tab_admin = st.tabs(["📊 Dashboard", "📝 Input (Admin)", "📂 Database", "⚙️ Setting"])
 
 # =========================================
 # TAB 1: DASHBOARD (PUBLIC)
 # =========================================
 with tab_dash:
-    st.title(f"{selected_site} - {sel_month_name} {sel_year}")
+    st.caption(f"Periode: {sel_month_name} {sel_year}")
     
     if df_wb_dash.empty:
-        st.warning("⚠️ Data belum tersedia.")
+        st.warning("⚠️ Data belum tersedia untuk periode ini.")
     else:
         # A. METRICS
         last_row = df_wb_dash.iloc[-1]
@@ -207,21 +225,23 @@ with tab_dash:
         st.markdown("---")
 
         # B. GRAFIK SUMP
-        st.subheader("📈 Tren Hidrologi")
+        st.subheader("📈 Tren Hidrologi Sump")
         fig_sump = go.Figure()
+        # Warna Bar disesuaikan agak keunguan/abu agar tidak nabrak dengan logo orange
         fig_sump.add_trace(go.Bar(
             x=df_wb_dash['Tanggal'], y=df_wb_dash['Volume Air Survey (m3)'], 
-            name='Volume', marker_color='#AED6F1', opacity=0.6, yaxis='y2',
+            name='Volume', marker_color='#95a5a6', opacity=0.6, yaxis='y2',
             text=df_wb_dash['Volume Air Survey (m3)'], texttemplate='%{text:.2s}', textposition='auto'
         ))
         fig_sump.add_trace(go.Scatter(
             x=df_wb_dash['Tanggal'], y=df_wb_dash['Critical Elevation (m)'], 
             name='Critical Level', line=dict(color='red', dash='dash', width=2)
         ))
+        # Line utama diberi warna Orange sesuai identitas Bara Tama Wijaya
         fig_sump.add_trace(go.Scatter(
             x=df_wb_dash['Tanggal'], y=df_wb_dash['Elevasi Air (m)'], 
             name='Elevasi Aktual', mode='lines+markers+text',
-            line=dict(color='#21618C', width=3),
+            line=dict(color='#e67e22', width=3),
             text=df_wb_dash['Elevasi Air (m)'], texttemplate='%{text:.2f}', textposition='top center'
         ))
         fig_sump.update_layout(
@@ -275,12 +295,12 @@ with tab_dash:
                 with cp2:
                     fig_e = go.Figure()
                     fig_e.add_trace(go.Bar(x=df_u['Tanggal'], y=df_u['EWH Plan'], name='Plan', marker_color='#bdc3c7'))
-                    fig_e.add_trace(go.Bar(x=df_u['Tanggal'], y=df_u['EWH Actual'], name='Actual', marker_color='#e67e22'))
+                    fig_e.add_trace(go.Bar(x=df_u['Tanggal'], y=df_u['EWH Actual'], name='Actual', marker_color='#d35400')) # Orange Tua
                     fig_e.update_layout(title="EWH (Jam)", barmode='group', height=300, showlegend=False, margin=dict(t=30, b=0))
                     st.plotly_chart(fig_e, use_container_width=True)
 
 # =========================================
-# TAB 2: INPUT (LOGIN REQUIRED) - UPDATED
+# TAB 2: INPUT & EDIT (LOGIN REQUIRED)
 # =========================================
 with tab_input:
     if not st.session_state['logged_in']:
@@ -296,7 +316,8 @@ with tab_input:
                 date_in = c1.date_input("Tanggal", date.today())
                 st.info(f"Site: **{selected_site}**")
                 site_in = selected_site 
-                pit_in = c3.selectbox("Pit", st.session_state['site_map'][selected_site], key="p_in")
+                # Gunakan Label SUMP
+                pit_in = c3.selectbox("Sump", st.session_state['site_map'][selected_site], key="p_in")
             
             cl, cr = st.columns(2)
             with cl:
@@ -348,10 +369,7 @@ with tab_input:
 
         # EDIT SUMP
         with tab_edit_sump:
-            # 1. Ambil data khusus site ini
             df_current_site = st.session_state.data_sump[st.session_state.data_sump['Site'] == selected_site].sort_values(by="Tanggal", ascending=False)
-            
-            # 2. Tampilkan Editor
             edited_sump = st.data_editor(
                 df_current_site, 
                 num_rows="dynamic", 
@@ -359,23 +377,16 @@ with tab_input:
                 use_container_width=True,
                 key="editor_sump"
             )
-
-            # 3. Tombol Save Logic
             if st.button("💾 Simpan Perubahan Sump"):
-                # Hapus data lama site ini dari Master Data
                 st.session_state.data_sump = st.session_state.data_sump[st.session_state.data_sump['Site'] != selected_site]
-                # Masukkan data hasil editan
                 st.session_state.data_sump = pd.concat([st.session_state.data_sump, edited_sump], ignore_index=True)
-                st.session_state.data_sump['Tanggal'] = pd.to_datetime(st.session_state.data_sump['Tanggal']) # Safety convert
+                st.session_state.data_sump['Tanggal'] = pd.to_datetime(st.session_state.data_sump['Tanggal'])
                 st.success("Data Sump Berhasil Di-update!")
                 st.rerun()
 
         # EDIT POMPA
         with tab_edit_pump:
-            # 1. Ambil data khusus site ini
             df_current_pump = st.session_state.data_pompa[st.session_state.data_pompa['Site'] == selected_site].sort_values(by="Tanggal", ascending=False)
-            
-            # 2. Tampilkan Editor
             edited_pump = st.data_editor(
                 df_current_pump, 
                 num_rows="dynamic", 
@@ -383,32 +394,53 @@ with tab_input:
                 use_container_width=True,
                 key="editor_pump"
             )
-
-            # 3. Tombol Save Logic
             if st.button("💾 Simpan Perubahan Pompa"):
-                # Hapus data lama site ini dari Master Data
                 st.session_state.data_pompa = st.session_state.data_pompa[st.session_state.data_pompa['Site'] != selected_site]
-                # Masukkan data hasil editan
                 st.session_state.data_pompa = pd.concat([st.session_state.data_pompa, edited_pump], ignore_index=True)
                 st.session_state.data_pompa['Tanggal'] = pd.to_datetime(st.session_state.data_pompa['Tanggal'])
                 st.success("Data Pompa Berhasil Di-update!")
                 st.rerun()
 
 # =========================================
-# TAB 3: DATABASE (PUBLIC)
+# TAB 3: DATABASE (SEPARATE DOWNLOAD)
 # =========================================
 with tab_db:
     st.subheader("📂 Download Center")
-    # Download mengikuti Site yang dipilih di sidebar agar konsisten
     st.write(f"Menampilkan data untuk: **{selected_site}**")
     
+    # Filter Data per Site
     df_s_dl = st.session_state.data_sump[st.session_state.data_sump['Site'] == selected_site]
     df_p_dl = st.session_state.data_pompa[st.session_state.data_pompa['Site'] == selected_site]
     
-    if not df_s_dl.empty:
-        df_join = pd.merge(df_s_dl, df_p_dl, on=['Tanggal', 'Site', 'Pit'], how='outer', suffixes=('_Sump', '_Pump'))
-        st.dataframe(df_join.head(5), use_container_width=True)
-        st.download_button("⬇️ Download CSV", df_join.to_csv(index=False).encode('utf-8'), f"Report_{selected_site}.csv", "text/csv")
+    col_dl1, col_dl2 = st.columns(2)
+
+    # BAGIAN SUMP
+    with col_dl1:
+        st.markdown("### 💧 Data Sump")
+        if not df_s_dl.empty:
+            st.dataframe(df_s_dl.head(5), use_container_width=True)
+            st.download_button(
+                label="⬇️ Download CSV Sump", 
+                data=df_s_dl.to_csv(index=False).encode('utf-8'), 
+                file_name=f"Sump_{selected_site}.csv", 
+                mime="text/csv"
+            )
+        else:
+            st.warning("Data Sump Kosong")
+
+    # BAGIAN POMPA
+    with col_dl2:
+        st.markdown("### ⚙️ Data Pompa")
+        if not df_p_dl.empty:
+            st.dataframe(df_p_dl.head(5), use_container_width=True)
+            st.download_button(
+                label="⬇️ Download CSV Pompa", 
+                data=df_p_dl.to_csv(index=False).encode('utf-8'), 
+                file_name=f"Pompa_{selected_site}.csv", 
+                mime="text/csv"
+            )
+        else:
+            st.warning("Data Pompa Kosong")
 
 # =========================================
 # TAB 4: ADMIN SETTINGS (LOGIN REQUIRED)
@@ -417,7 +449,7 @@ with tab_admin:
     if not st.session_state['logged_in']:
         render_login_form()
     else:
-        st.subheader("⚙️ Manajemen Site & Pit")
+        st.subheader("⚙️ Manajemen Site & Sump")
         
         col_add1, col_add2 = st.columns(2)
         with col_add1:
@@ -430,14 +462,13 @@ with tab_admin:
                     st.rerun()
         
         with col_add2:
-            st.markdown("#### Tambah Pit ke Site")
-            # Bisa pilih site lain untuk diedit
+            st.markdown("#### Tambah Sump ke Site")
             target_site = st.selectbox("Pilih Site yang mau diedit", list(st.session_state['site_map'].keys()))
-            new_pit_name = st.text_input("Nama Pit Baru")
-            if st.button("➕ Tambah Pit"):
+            new_pit_name = st.text_input("Nama Sump Baru")
+            if st.button("➕ Tambah Sump"):
                 if new_pit_name and new_pit_name not in st.session_state['site_map'][target_site]:
                     st.session_state['site_map'][target_site].append(new_pit_name)
-                    st.success(f"Pit '{new_pit_name}' ditambahkan ke {target_site}!")
+                    st.success(f"Sump '{new_pit_name}' ditambahkan ke {target_site}!")
                     st.rerun()
         
         st.divider()
