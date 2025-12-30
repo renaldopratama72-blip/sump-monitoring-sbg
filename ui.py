@@ -7,77 +7,102 @@ USERS = {"englcm": "eng123", "engwsl": "eng123", "engne": "eng123", "admin": "en
 def load_css():
     st.markdown("""
     <style>
-        /* --- 1. FORCE MAIN BACKGROUND TO LIGHT --- */
+        /* =========================================
+           1. MAIN CONTENT AREA (FORCE LIGHT THEME)
+           ========================================= */
+        
+        /* Force Main Background to Light Grey */
         .stApp {
             background-color: #f4f6f9 !important;
         }
 
-        /* --- 2. FORCE ALL TEXT IN MAIN AREA TO BLACK --- */
-        /* This overrides Streamlit's Dark Mode default white text */
-        .main .block-container p, 
-        .main .block-container div, 
+        /* Force ALL Text in Main Area to BLACK */
         .main .block-container h1, 
         .main .block-container h2, 
         .main .block-container h3, 
         .main .block-container h4, 
-        .main .block-container h5, 
-        .main .block-container h6,
-        .main .block-container span,
-        .main .block-container label,
+        .main .block-container p, 
+        .main .block-container span, 
+        .main .block-container label, 
+        .main .block-container div, 
         .main .block-container li {
             color: #000000 !important;
         }
 
-        /* --- 3. FIX METRIC BOXES SPECIFICALLY --- */
+        /* Fix Metric Boxes (White Box, Black Text) */
         div[data-testid="metric-container"] {
             background-color: #ffffff !important;
             border: 1px solid #e0e0e0;
-            padding: 15px;
-            border-radius: 10px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        }
-        
-        /* Force Metric Label (Top text) to Black */
-        div[data-testid="metric-container"] label[data-testid="stMetricLabel"] {
             color: #000000 !important;
         }
-        div[data-testid="metric-container"] div[data-testid="stMetricLabel"] {
-             color: #000000 !important;
+        div[data-testid="metric-container"] label {
+            color: #000000 !important;
         }
-        
-        /* Force Metric Value (Big number) to Black */
         div[data-testid="metric-container"] div[data-testid="stMetricValue"] {
             color: #000000 !important;
         }
-        
-        /* Force Metric Delta (Arrow) text - Optional, usually green/red is fine */
-        div[data-testid="stMetricDelta"] {
-            /* Keep default colors for delta */
-        }
 
-        /* --- 4. FIX CUSTOM BOXES --- */
-        .analysis-box, .rec-box, .danger-box {
-            color: #000000 !important;
-        }
-        
-        /* --- 5. FIX EXPANDERS --- */
+        /* Fix Expander Headers */
         .streamlit-expanderHeader {
             color: #000000 !important;
             background-color: #ffffff !important;
         }
+
+        /* Custom Box Classes */
+        .analysis-box, .rec-box, .danger-box {
+            color: #000000 !important;
+        }
+        .wb-alert {
+            color: #cc0000 !important;
+        }
+
+
+        /* =========================================
+           2. SIDEBAR AREA (FORCE DARK THEME)
+           ========================================= */
         
-        /* --- 6. SIDEBAR EXCEPTIONS --- */
-        /* Keep Sidebar Dark (White Text) so it looks good */
+        /* Force Sidebar Background to Dark */
         section[data-testid="stSidebar"] {
             background-color: #262730 !important;
         }
-        section[data-testid="stSidebar"] * {
+
+        /* Force Sidebar GENERAL Text to WHITE */
+        section[data-testid="stSidebar"] h1, 
+        section[data-testid="stSidebar"] h2, 
+        section[data-testid="stSidebar"] h3, 
+        section[data-testid="stSidebar"] p, 
+        section[data-testid="stSidebar"] span, 
+        section[data-testid="stSidebar"] label,
+        section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] {
             color: #ffffff !important;
         }
-        /* Fix Input fields in Sidebar to have dark text if background is white input */
+
+        /* --- FIX SIDEBAR INPUTS (The tricky part) --- */
+        
+        /* 1. The Labels above inputs (must be White) */
+        section[data-testid="stSidebar"] .stSelectbox label,
+        section[data-testid="stSidebar"] .stTextInput label,
+        section[data-testid="stSidebar"] .stDateInput label,
+        section[data-testid="stSidebar"] .stNumberInput label {
+            color: #ffffff !important;
+        }
+
+        /* 2. The Text INSIDE the Input Box (must be Black, because the box is white) */
         section[data-testid="stSidebar"] input {
             color: #000000 !important;
         }
+        
+        /* 3. The Text INSIDE Dropdowns (Selected Value) */
+        section[data-testid="stSidebar"] div[data-baseweb="select"] span {
+            color: #000000 !important;
+        }
+        
+        /* 4. Fix dropdown svg icons */
+        section[data-testid="stSidebar"] div[data-baseweb="select"] svg {
+            fill: #000000 !important;
+        }
+
     </style>
     """, unsafe_allow_html=True)
 
