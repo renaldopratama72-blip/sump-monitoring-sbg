@@ -16,35 +16,47 @@ def load_css():
             background-color: #f4f6f9 !important;
         }
 
-        /* Force ALL Text in Main Area to BLACK */
+        /* --- AGGRESSIVE TEXT COLOR OVERRIDE --- */
+        /* Target the main container and force all common text elements to BLACK */
+        .main .block-container {
+            color: #000000 !important;
+        }
+        
         .main .block-container h1, 
         .main .block-container h2, 
         .main .block-container h3, 
         .main .block-container h4, 
         .main .block-container p, 
-        .main .block-container span, 
-        .main .block-container label, 
-        .main .block-container div, 
-        .main .block-container li {
+        .main .block-container li,
+        .main .block-container span,
+        .main .block-container div[data-testid="stMarkdownContainer"] p {
             color: #000000 !important;
         }
 
-        /* Fix Metric Boxes (White Box, Black Text) */
+        /* Fix specific Streamlit elements that might resist */
+        .main .block-container label[data-testid="stMetricLabel"] {
+            color: #000000 !important;
+        }
+        .main .block-container div[data-testid="stMetricValue"] {
+            color: #000000 !important;
+        }
+        .main .block-container div[data-testid="stMetricDelta"] {
+            /* Keep delta colors (green/red) but ensure visibility if needed */
+        }
+
+        /* Metric Box Styling */
         div[data-testid="metric-container"] {
             background-color: #ffffff !important;
             border: 1px solid #e0e0e0;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            color: #000000 !important;
-        }
-        div[data-testid="metric-container"] label {
-            color: #000000 !important;
-        }
-        div[data-testid="metric-container"] div[data-testid="stMetricValue"] {
-            color: #000000 !important;
         }
 
         /* Fix Expander Headers */
         .streamlit-expanderHeader {
+            color: #000000 !important;
+            background-color: #ffffff !important;
+        }
+        .streamlit-expanderContent {
             color: #000000 !important;
             background-color: #ffffff !important;
         }
@@ -78,7 +90,7 @@ def load_css():
             color: #ffffff !important;
         }
 
-        /* --- FIX SIDEBAR INPUTS (The tricky part) --- */
+        /* --- FIX SIDEBAR INPUTS --- */
         
         /* 1. The Labels above inputs (must be White) */
         section[data-testid="stSidebar"] .stSelectbox label,
