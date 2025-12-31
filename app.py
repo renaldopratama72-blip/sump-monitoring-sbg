@@ -276,6 +276,9 @@ with tab_input:
                     with st.form("fs"):
                         st.markdown(f"<b>Data Sump: {p_in}</b>", unsafe_allow_html=True)
                         e_a = st.number_input("Elevasi (m)", format="%.2f")
+                        # --- UPDATE: Added Manual Critical Elevation Input ---
+                        c_e = st.number_input("Critical Elevation (m)", value=13.0, format="%.2f")
+                        
                         v_a = st.number_input("Volume Survey (m3)", step=100)
                         r_p = st.number_input("Rain Plan (mm)", value=20.0)
                         r_a = st.number_input("Rain Act (mm)", 0.0)
@@ -284,11 +287,12 @@ with tab_input:
                         if st.form_submit_button("Simpan Sump"):
                             new = {
                                 "Tanggal": pd.to_datetime(d_in), "Site": selected_site, "Pit": p_in,
-                                "Elevasi Air (m)": e_a, "Critical Elevation (m)": 13.0,
+                                "Elevasi Air (m)": e_a, 
+                                "Critical Elevation (m)": c_e, # Uses the manual input variable
                                 "Volume Air Survey (m3)": v_a, "Plan Curah Hujan (mm)": r_p,
                                 "Curah Hujan (mm)": r_a, "Actual Catchment (Ha)": 25.0,
                                 "Groundwater (m3)": gw_v,
-                                "Status": "BAHAYA" if e_a > 13 else "AMAN"
+                                "Status": "BAHAYA" if e_a > c_e else "AMAN" # Check against c_e
                             }
                             db.save_new_sump(new)
                             
