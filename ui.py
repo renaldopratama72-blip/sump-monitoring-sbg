@@ -1,8 +1,6 @@
 import streamlit as st
 import plotly.graph_objects as go
-import os
-
-USERS = {"englcm": "eng123", "engwsl": "eng123", "engne": "eng123", "admin": "eng123"}
+import pandas as pd
 
 def load_css():
     st.markdown("""
@@ -32,7 +30,7 @@ def load_css():
         }
         /* The Caption/Delta (e.g., "Crit: 13.0") */
         [data-testid="stMetricDelta"] > div {
-            color: #333333 !important; /* Dark Grey (overrides default light grey) */
+            color: #333333 !important; /* Dark Grey */
         }
         /* Ensure Metric Box Background is White */
         div[data-testid="metric-container"] {
@@ -49,49 +47,46 @@ def load_css():
         .streamlit-expanderHeader p {
             color: #000000 !important;
         }
+        
+        /* 5. FIX DATAFRAME/TABLE TEXT */
+        div[data-testid="stDataFrame"] {
+            color: #000000 !important;
+        }
 
-        /* 5. FIX CUSTOM BOXES (e.g., "PERINGATAN", "REKOMENDASI") */
-        /* Forces the container text to black */
+        /* 6. FIX CUSTOM BOXES (e.g., "PERINGATAN", "REKOMENDASI") */
         .analysis-box, .rec-box, .danger-box, .wb-alert {
             color: #000000 !important;
         }
-        /* Forces the Headers inside boxes (e.g., <h4>REKOMENDASI</h4>) to black */
         .analysis-box h4, .rec-box h4, .danger-box h4, .wb-alert h4 {
             color: #000000 !important;
         }
-        /* Forces List items (e.g., "🔴 Cek Input...") to black */
         .analysis-box li, .rec-box li, .danger-box li, .wb-alert li {
             color: #000000 !important;
         }
-        /* Forces Bold text (e.g., <b>Status Water Balance:</b>) to black */
         .analysis-box b, .rec-box b, .danger-box b, .wb-alert b {
             color: #000000 !important;
         }
-        /* Forces standard paragraphs inside boxes to black */
         .analysis-box p, .rec-box p, .danger-box p, .wb-alert p {
             color: #000000 !important;
         }
 
-        /* 6. FIX GENERAL MARKDOWN TEXT (Fallback for other text) */
-        .main p {
+        /* 7. FIX GENERAL MARKDOWN TEXT */
+        .main p, .main li {
             color: #000000 !important;
+        }
+        
+        /* 8. DATE HEADER STYLE */
+        .date-header {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 5px;
         }
 
     </style>
     """, unsafe_allow_html=True)
-
-def render_login_form(unique_key):
-    with st.form(key=f"login_form_{unique_key}"):
-        st.subheader("🔒 Area Terbatas")
-        user = st.text_input("Username")
-        pwd = st.text_input("Password", type="password")
-        if st.form_submit_button("Login"):
-            if user in USERS and USERS[user] == pwd:
-                st.session_state['logged_in'] = True
-                st.session_state['username'] = user
-                st.rerun()
-            else:
-                st.error("Gagal Login")
 
 def render_charts(df_wb_dash, df_p_display, title_suffix):
     # FORCE PLOTLY TO USE BLACK TEXT & TRANSPARENT BACKGROUND
@@ -152,6 +147,7 @@ def render_charts(df_wb_dash, df_p_display, title_suffix):
     # --- 3. PUMP PERFORMANCE ---
     st.markdown("---")
     st.subheader(f"⚙️ Performa Pompa ({title_suffix})")
+    
     if not df_p_display.empty:
         col_p1, col_p2 = st.columns(2)
         with col_p1:
@@ -166,5 +162,29 @@ def render_charts(df_wb_dash, df_p_display, title_suffix):
             fig_e.add_trace(go.Scatter(x=df_p_display['Tanggal'], y=df_p_display['EWH Plan'], name='Plan', line=dict(color='#2c3e50', dash='dash')))
             fig_e.update_layout(title="EWH (Jam)", legend=dict(orientation='h', y=1.1), height=300, margin=dict(t=30), **layout_settings)
             st.plotly_chart(fig_e, use_container_width=True)
+
+        # --- TABLE DETAIL STATUS (Hanya muncul jika kolom Status Operasi ada) ---
+        if 'Status Operasi' in df_p_display.columns:
+            st.markdown("##### 📝 Log Status & Remarks Harian")
+            # Pastikan format tanggal string agar enak dibaca
+            df_table = df_p_display.copy()
+            df_table['Tanggal'] = df_table['Tanggal'].dt.strftime('%d-%m-%Y')
+            
+            # Pilih kolom yang relevan
+            cols_to_show = ['Tanggal', 'Unit Code', 'Status Operasi', 'Remarks', 'EWH Actual']
+            cols_avail = [c for c in cols_to_show if c in df_table.columns]
+            
+            # Styling tabel (Highlight Breakdown)
+            def highlight_bd(val):
+                if isinstance(val, str) and "Breakdown" in val:
+                    return 'background-color: #ffcccc; color: red; font-weight: bold;'
+                return ''
+
+            st.dataframe(
+                df_table[cols_avail].style.applymap(highlight_bd, subset=['Status Operasi']),
+                use_container_width=True,
+                hide_index=True
+            )
+            
     else:
         st.info("Data Pompa tidak ditemukan untuk filter ini.")
