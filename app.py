@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import os
+import time
 
 # Import Modules
 # Pastikan file database.py, processing.py, dan ui.py ada di folder yang sama
@@ -30,6 +31,8 @@ if 'data_sump' not in st.session_state or 'data_pompa' not in st.session_state:
 
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if 'username' not in st.session_state: st.session_state['username'] = ''
+if 'is_admin' not in st.session_state: st.session_state['is_admin'] = False # State khusus admin utama
+
 if 'site_map' not in st.session_state:
     # Build dynamic site map from DB data
     if not st.session_state.data_sump.empty:
@@ -44,11 +47,22 @@ if 'site_map' not in st.session_state:
 
 # --- 3. SIDEBAR ---
 with st.sidebar:
-    st.markdown("## 🏢 BARA TAMA WIJAYA")
+    # --- LOGO BARA TAMA WIJAYA ---
+    try:
+        st.image("1.bara tama wijaya.jpg", use_container_width=True)
+    except:
+        st.warning("Logo '1.bara tama wijaya.jpg' tidak ditemukan.")
+    
+    st.markdown("## 🏢 WATER MANAGEMENT")
+    
     if st.session_state['logged_in']:
-        st.success(f"👤 Login: {st.session_state['username']}")
+        role_label = "SUPER ADMIN" if st.session_state['is_admin'] else "USER"
+        st.success(f"👤 Login: {st.session_state['username']}\n\n🛡️ Role: {role_label}")
         if st.button("Logout", use_container_width=True):
-            st.session_state['logged_in'] = False; st.rerun()
+            st.session_state['logged_in'] = False
+            st.session_state['username'] = ''
+            st.session_state['is_admin'] = False
+            st.rerun()
     else:
         st.info("👀 Mode: View Only")
     
@@ -87,7 +101,7 @@ df_wb_dash, df_p_display, title_suffix = proc.process_water_balance(
 
 # --- 5. TABS ---
 st.markdown(f"## 🏢 Bara Tama Wijaya: {selected_site}")
-tab_dash, tab_input, tab_db, tab_admin = st.tabs(["📊 Dashboard", "📝 Input (Admin)", "📂 Database", "⚙️ Setting"])
+tab_dash, tab_input, tab_db, tab_admin = st.tabs(["📊 Dashboard", "📝 Input (Admin)", "📂 Database", "⚙️ Setting (Super Admin)"])
 
 # TAB 1: DASHBOARD
 with tab_dash:
@@ -210,10 +224,32 @@ with tab_dash:
 
 # TAB 2: INPUT
 with tab_input:
+    # Siapapun yg login bisa input (User Biasa atau Admin)
+    # Jika belum login sama sekali, tampilkan form login
     if not st.session_state['logged_in']:
-        ui.render_login_form("input")
+        st.info("Silakan Login untuk Menginput Data")
+        with st.form("login_input_form"):
+            u_in = st.text_input("Username")
+            p_in = st.text_input("Password", type="password")
+            if st.form_submit_button("Login"):
+                # Login Sederhana untuk Input
+                if u_in == "sbwengjkt" and p_in == "jakarta":
+                    st.session_state['logged_in'] = True
+                    st.session_state['username'] = u_in
+                    st.session_state['is_admin'] = True # Ini super admin
+                    st.success("Login Sukses sebagai Super Admin!")
+                    st.rerun()
+                elif u_in != "" and p_in != "": 
+                    # Jika user lain (bebas dulu untuk sementara, atau sesuaikan)
+                    st.session_state['logged_in'] = True
+                    st.session_state['username'] = u_in
+                    st.session_state['is_admin'] = False
+                    st.success(f"Login Sukses sebagai {u_in}!")
+                    st.rerun()
+                else:
+                    st.error("Username/Password salah")
     else:
-        st.info("Input Data Harian (Saved to Neon Cloud)")
+        st.info(f"Input Data Harian (User: {st.session_state['username']})")
         with st.expander("➕ Input Harian Baru", expanded=True):
             d_in = st.date_input("Tanggal", date.today())
             
@@ -262,7 +298,7 @@ with tab_input:
                             st.success(f"Sump '{p_in}' Saved!")
                             st.rerun()
 
-                # --- KOLOM KANAN: DATA POMPA (MODIFIED) ---
+                # --- KOLOM KANAN: DATA POMPA ---
                 with cr:
                     with st.form("fp"):
                         st.markdown(f"<b>Data Pompa: {p_in}</b>", unsafe_allow_html=True)
@@ -300,8 +336,8 @@ with tab_input:
                                 "Tanggal": pd.to_datetime(d_in), "Site": selected_site, "Pit": p_in,
                                 "Unit Code": uc, "Debit Plan (m3/h)": dp, "Debit Actual (m3/h)": da,
                                 "EWH Plan": ewh_p, "EWH Actual": ea,
-                                "Status Operasi": status_ops, # New Field
-                                "Remarks": ket_rem            # New Field
+                                "Status Operasi": status_ops,
+                                "Remarks": ket_rem
                             }
                             db.save_new_pompa(newp)
                             _, st.session_state['data_pompa'] = db.load_data() # Reload
@@ -345,11 +381,38 @@ with tab_db:
     c2.download_button("Download Pompa CSV", st.session_state.data_pompa.to_csv(index=False), "pompa.csv")
     st.dataframe(st.session_state.data_sump)
 
-# TAB 4: ADMIN / SETTINGS
+# TAB 4: ADMIN / SETTINGS (RESTRICTED)
 with tab_admin:
     st.markdown("### ⚙️ System Settings")
     
-    if st.session_state['logged_in']:
+    # --- LOGIKA OTENTIKASI KHUSUS ADMIN ---
+    # Cek apakah sudah login DAN username-nya sesuai yang diminta
+    is_super_admin = False
+    
+    # Jika sudah login dari tab input, cek username
+    if st.session_state['logged_in'] and st.session_state['username'] == 'sbwengjkt':
+        is_super_admin = True
+    
+    # Jika belum login atau username salah, minta login ulang khusus admin
+    if not is_super_admin:
+        st.warning("🔒 Area Terbatas: Membutuhkan Akses Super Admin")
+        with st.form("admin_login"):
+            u = st.text_input("Username Admin")
+            p = st.text_input("Password Admin", type="password")
+            if st.form_submit_button("Buka Setting"):
+                if u == "sbwengjkt" and p == "jakarta":
+                    st.session_state['logged_in'] = True
+                    st.session_state['username'] = u
+                    st.session_state['is_admin'] = True
+                    st.success("Akses Diberikan!")
+                    st.rerun()
+                else:
+                    st.error("Akses Ditolak: Username atau Password salah.")
+    
+    # --- KONTEN SETTING (HANYA MUNCUL JIKA SUPER ADMIN) ---
+    else:
+        st.success(f"✅ Welcome Super Admin: {st.session_state['username']}")
+        
         # Section 1: Manage Sites
         st.markdown("#### 🏗️ Manage Sites")
         ns = st.text_input("New Site Name")
@@ -417,6 +480,3 @@ with tab_admin:
                     db.reset_db()
                     st.session_state.clear()
                 st.success("Database has been reset. Please refresh the page.")
-                
-    else:
-        ui.render_login_form("adm")
