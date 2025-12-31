@@ -4,6 +4,7 @@ from datetime import date
 import os
 
 # Import Modules
+# Pastikan file database.py, processing.py, dan ui.py ada di folder yang sama
 import database as db
 import processing as proc
 import ui
@@ -116,11 +117,10 @@ with tab_dash:
         
         st.markdown("---")
 
-        # --- RESTORED: WATER BALANCE WARNING BANNER ---
+        # --- WATER BALANCE WARNING BANNER ---
         last_error = last['Error %']
         is_wb_critical = False
         
-        # Logic: If error > 5% or is NaN (Not a Number), show warning
         if last_error > 5.0 or pd.isna(last_error):
             is_wb_critical = True
             st.markdown(f"""
@@ -133,12 +133,11 @@ with tab_dash:
         # --- CHARTS (From ui.py) ---
         ui.render_charts(df_wb_dash, df_p_display, title_suffix)
 
-        # --- RESTORED: DETAIL TABLE ---
+        # --- DETAIL TABLE ---
         with st.expander("📋 Lihat Detail Angka Water Balance"):
             df_show = df_wb_dash[['Tanggal', 'Volume Air Survey (m3)', 'Volume Teoritis', 'Diff Volume', 'Error %']].copy()
             df_show['Tanggal'] = df_show['Tanggal'].dt.strftime('%d-%m-%Y')
             
-            # Formatting for nicer display
             st.dataframe(
                 df_show.style.format({
                     'Volume Air Survey (m3)': '{:,.0f}',
@@ -150,7 +149,7 @@ with tab_dash:
                 use_container_width=True
             )
 
-        # --- RESTORED: ANALYSIS & RECOMMENDATION BOXES ---
+        # --- ANALYSIS & RECOMMENDATION BOXES ---
         st.markdown("---")
         st.subheader("🧠 Analisa & Rekomendasi")
         
@@ -158,7 +157,7 @@ with tab_dash:
         
         # Determine Status for Boxes
         if is_wb_critical:
-            style_box = "danger-box" # CSS class defined in ui.py
+            style_box = "danger-box"
             header_text = "🚨 PERINGATAN: DATA TIDAK BALANCE"
             bg_color = "#fdedec"
             border_color = "#e74c3c"
@@ -173,7 +172,6 @@ with tab_dash:
             bg_color = "#e8f6f3"
             border_color = "#1abc9c"
 
-        # Render Left Box (Analysis)
         with col_an:
             st.markdown(f"""
             <div style='background-color: {bg_color}; padding: 15px; border-radius: 10px; border-left: 5px solid {border_color};'>
@@ -186,7 +184,6 @@ with tab_dash:
             </div>
             """, unsafe_allow_html=True)
 
-        # Render Right Box (Recommendation)
         with col_rec:
             st.markdown(f"""
             <div style='background-color: #fef9e7; padding: 15px; border-radius: 10px; border-left: 5px solid #f1c40f;'>
@@ -195,7 +192,6 @@ with tab_dash:
             
             rec_list = []
             
-            # Logic for recommendations
             if is_wb_critical:
                 rec_list.append("🔴 <b>CEK INPUT DATA (HUMAN ERROR):</b> Pastikan angka Elevasi, Debit, dan Hujan yang diinput sudah benar.")
                 rec_list.append("🔴 <b>Cek Groundwater:</b> Apakah ada air tanah/rembesan besar yang belum diinput di kolom Groundwater?")
@@ -222,28 +218,24 @@ with tab_input:
             d_in = st.date_input("Tanggal", date.today())
             
             # --- FIXED LOGIC FOR SUMP SELECTION ---
-            # Get existing sumps for this site
             existing_sumps = st.session_state['site_map'].get(selected_site, [])
+            p_in = None 
             
-            p_in = None # Variable to hold the final chosen sump name
-            
-            # If no sumps exist (New Site), force Text Input
             if not existing_sumps:
                 st.warning(f"Belum ada Sump di {selected_site}. Silakan buat baru.")
                 p_in = st.text_input("Nama Sump Baru (Wajib Diisi)", placeholder="Contoh: Sump Utara")
             else:
-                # If sumps exist, allow user to choose or create new
                 mode_input = st.radio("Mode Input Sump:", ["Pilih Sump Ada", "Buat Sump Baru"], horizontal=True)
-                
                 if mode_input == "Pilih Sump Ada":
                     p_in = st.selectbox("Pilih Sump", existing_sumps)
                 else:
                     p_in = st.text_input("Nama Sump Baru", placeholder="Contoh: Sump Selatan")
 
             # --- FORM INPUT ---
-            # Only show forms if p_in is valid (not empty string)
             if p_in:
                 cl, cr = st.columns(2)
+                
+                # --- KOLOM KIRI: DATA SUMP ---
                 with cl:
                     with st.form("fs"):
                         st.markdown(f"<b>Data Sump: {p_in}</b>", unsafe_allow_html=True)
@@ -264,31 +256,56 @@ with tab_input:
                             }
                             db.save_new_sump(new)
                             
-                            # Refresh Data & Site Map immediately
                             st.session_state['data_sump'], _ = db.load_data()
-                            # Rebuild map so the new sump appears in dropdowns next time
                             st.session_state.pop('site_map', None)
                             
                             st.success(f"Sump '{p_in}' Saved!")
                             st.rerun()
 
+                # --- KOLOM KANAN: DATA POMPA (MODIFIED) ---
                 with cr:
                     with st.form("fp"):
                         st.markdown(f"<b>Data Pompa: {p_in}</b>", unsafe_allow_html=True)
                         uc = st.text_input("Unit Code (e.g., WP-01)")
                         dp = st.number_input("Debit Plan (m3/h)", value=500)
                         da = st.number_input("Debit Actual (m3/h)", 0)
+                        
+                        ewh_p = st.number_input("EWH Plan (Jam)", value=20.0)
                         ea = st.number_input("EWH Actual (Jam)", 0.0)
+                        
+                        # --- STATUS & REMARKS ---
+                        st.markdown("---")
+                        st.caption("Status Operasi & Keterangan")
+                        
+                        opsi_status = [
+                            "Running",
+                            "Standby - Kandas (Air Habis)",
+                            "Standby - Hujan/Licin",
+                            "Standby - No Operator",
+                            "Standby - General",
+                            "Breakdown (BD) Unit",
+                            "Breakdown (BD) Pipa",
+                            "Schedule Maintenance"
+                        ]
+                        
+                        # Auto-detect default status based on Hours
+                        idx_def = 0 
+                        if ea == 0: idx_def = 1 # Set to Standby if 0 hours
+                        
+                        status_ops = st.selectbox("Pilih Status Unit:", opsi_status, index=idx_def)
+                        ket_rem = st.text_input("Remarks / Keterangan", placeholder="Contoh: Hose pecah, menunggu mekanik")
                         
                         if st.form_submit_button("Simpan Pompa"):
                             newp = {
                                 "Tanggal": pd.to_datetime(d_in), "Site": selected_site, "Pit": p_in,
                                 "Unit Code": uc, "Debit Plan (m3/h)": dp, "Debit Actual (m3/h)": da,
-                                "EWH Plan": 20.0, "EWH Actual": ea
+                                "EWH Plan": ewh_p, "EWH Actual": ea,
+                                "Status Operasi": status_ops, # New Field
+                                "Remarks": ket_rem            # New Field
                             }
                             db.save_new_pompa(newp)
                             _, st.session_state['data_pompa'] = db.load_data() # Reload
-                            st.success(f"Pompa for '{p_in}' Saved!")
+                            st.success(f"Pompa '{p_in}' Saved! (Status: {status_ops})")
                             st.rerun()
             else:
                 if not existing_sumps:
@@ -300,7 +317,6 @@ with tab_input:
         
         t1, t2 = st.tabs(["Edit Sump", "Edit Pompa"])
         with t1:
-            # Sump Editor
             curr_s = st.session_state.data_sump[st.session_state.data_sump['Site']==selected_site]
             ed_s = st.data_editor(curr_s, num_rows="dynamic", key="es")
             
@@ -308,13 +324,10 @@ with tab_input:
                 full_s = pd.concat([st.session_state.data_sump[st.session_state.data_sump['Site']!=selected_site], ed_s], ignore_index=True)
                 db.overwrite_full_db(full_s, st.session_state.data_pompa)
                 st.session_state['data_sump'] = full_s
-                
-                # Rebuild map in case sumps were renamed or deleted
                 st.session_state.pop('site_map', None)
                 st.success("Updated!"); st.rerun()
                 
         with t2:
-            # Pompa Editor
             curr_p = st.session_state.data_pompa[st.session_state.data_pompa['Site']==selected_site]
             ed_p = st.data_editor(curr_p, num_rows="dynamic", key="ep")
             
@@ -355,7 +368,6 @@ with tab_admin:
                 try:
                     with st.spinner("Generating data..."):
                         db.generate_dummy_data()
-                        # Reload Data
                         df_s, df_p = db.load_data()
                         st.session_state['data_sump'] = df_s
                         st.session_state['data_pompa'] = df_p
@@ -380,12 +392,30 @@ with tab_admin:
 
         st.divider()
         st.markdown("#### ⚠️ Danger Zone")
+        
+        # --- NEW DATABASE HELPER ---
+        with st.expander("🛠️ Update Struktur Database (Wajib Klik Sekali)"):
+            st.warning("Klik tombol ini JIKA Anda baru saja menambahkan kolom Status/Remarks dan belum update database.")
+            if st.button("Tambah Kolom Status ke Tabel Pompa"):
+                try:
+                    if hasattr(db, 'conn'):
+                        cur = db.conn.cursor()
+                        cur.execute('ALTER TABLE pompa ADD COLUMN IF NOT EXISTS "Status Operasi" TEXT;')
+                        cur.execute('ALTER TABLE pompa ADD COLUMN IF NOT EXISTS "Remarks" TEXT;')
+                        db.conn.commit()
+                        cur.close()
+                        st.success("Sukses! Kolom Status & Remarks sudah ditambahkan.")
+                    else:
+                        st.error("Koneksi DB tidak ditemukan di modul database.")
+                except Exception as e:
+                    st.error(f"Gagal update DB: {e}")
+
         with st.expander("Reset Database (Fix Schema Errors)"):
-            st.warning("This will DELETE ALL DATA (Real & Dummy) and recreate empty tables. Use this if you get 'ProgrammingError' or 'Column missing' errors.")
+            st.warning("This will DELETE ALL DATA (Real & Dummy) and recreate empty tables.")
             if st.button("🔴 RESET DATABASE (DROP TABLES)", type="primary"):
                 with st.spinner("Resetting Database..."):
                     db.reset_db()
-                    st.session_state.clear() # Clear session to force full reload
+                    st.session_state.clear()
                 st.success("Database has been reset. Please refresh the page.")
                 
     else:
