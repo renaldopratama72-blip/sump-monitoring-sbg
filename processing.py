@@ -45,10 +45,16 @@ def process_water_balance(df_s, df_p, selected_site, selected_pit, selected_unit
             df_p_display = df_p_filt[df_p_filt['Unit Code'] == selected_unit].sort_values(by="Tanggal")
             title_suffix = f"Unit: {selected_unit}"
         else:
-            # Jika All Units, kita rata-rata (Status & Remarks hilang karena tidak bisa dirata-rata)
-            # Menggunakan numeric_only=True untuk menghindari error jika ada kolom text
+            # FIX: Jika All Units, pastikan kolom yang akan dirata-rata bertipe NUMERIK
             cols_to_avg = ['Debit Plan (m3/h)', 'Debit Actual (m3/h)', 'EWH Plan', 'EWH Actual']
-            df_p_display = df_p_filt.groupby('Tanggal')[cols_to_avg].mean().reset_index()
+            
+            # Konversi paksa ke numeric (jika ada error jadi NaN)
+            for col in cols_to_avg:
+                if col in df_p_filt.columns:
+                    df_p_filt[col] = pd.to_numeric(df_p_filt[col], errors='coerce')
+
+            # Groupby dengan numeric_only=True agar aman
+            df_p_display = df_p_filt.groupby('Tanggal')[cols_to_avg].mean(numeric_only=True).reset_index()
             title_suffix = "Rata-rata Semua Unit"
 
     # 4. Water Balance Calculation
@@ -56,6 +62,11 @@ def process_water_balance(df_s, df_p, selected_site, selected_pit, selected_unit
         # A. Hitung Volume Out (Total semua pompa di Pit tersebut)
         if not df_p_filt.empty:
             df_p_total = df_p_filt.copy()
+            
+            # Pastikan tipe data numerik sebelum perkalian
+            df_p_total['Debit Actual (m3/h)'] = pd.to_numeric(df_p_total['Debit Actual (m3/h)'], errors='coerce').fillna(0)
+            df_p_total['EWH Actual'] = pd.to_numeric(df_p_total['EWH Actual'], errors='coerce').fillna(0)
+            
             df_p_total['Volume Out'] = df_p_total['Debit Actual (m3/h)'] * df_p_total['EWH Actual']
             
             # Group by Tanggal, Site, Pit untuk mendapatkan total volume buang harian
@@ -69,9 +80,15 @@ def process_water_balance(df_s, df_p, selected_site, selected_pit, selected_unit
             df_wb['Volume Out'] = 0
 
         # B. Inflow Logic
+        # Pastikan data numerik
+        df_wb['Curah Hujan (mm)'] = pd.to_numeric(df_wb['Curah Hujan (mm)'], errors='coerce').fillna(0)
+        df_wb['Actual Catchment (Ha)'] = pd.to_numeric(df_wb['Actual Catchment (Ha)'], errors='coerce').fillna(0)
+        df_wb['Groundwater (m3)'] = pd.to_numeric(df_wb['Groundwater (m3)'], errors='coerce').fillna(0)
+        df_wb['Volume Air Survey (m3)'] = pd.to_numeric(df_wb['Volume Air Survey (m3)'], errors='coerce').fillna(0)
+
         # Asumsi: Actual Catchment x Curah Hujan x 10 = Volume Hujan (m3)
         df_wb['Volume In (Rain)'] = df_wb['Curah Hujan (mm)'] * df_wb['Actual Catchment (Ha)'] * 10
-        df_wb['Volume In (GW)'] = df_wb['Groundwater (m3)'].fillna(0)
+        df_wb['Volume In (GW)'] = df_wb['Groundwater (m3)']
 
         # Sort agar perhitungan shift (kemarin) benar
         df_wb = df_wb.sort_values(by="Tanggal")
@@ -87,7 +104,6 @@ def process_water_balance(df_s, df_p, selected_site, selected_pit, selected_unit
         df_wb['Diff Volume'] = df_wb['Volume Air Survey (m3)'] - df_wb['Volume Teoritis']
         
         # Error % (Handle division by zero)
-        # Jika Volume Survey 0, set error ke 0 atau NaN agar tidak error
         df_wb['Error %'] = np.where(
             df_wb['Volume Air Survey (m3)'] > 0,
             (df_wb['Diff Volume'].abs() / df_wb['Volume Air Survey (m3)']) * 100,
