@@ -12,8 +12,8 @@ import ui
 
 # --- 1. CONFIG & SETUP ---
 st.set_page_config(
-    page_title="Bara Tama Wijaya Water Management",
-    page_icon="🔥",
+    page_title="DMS : Dry Mine System",  # <--- PERUBAHAN NAMA PROGRAM
+    page_icon="🌤️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -53,7 +53,8 @@ with st.sidebar:
     except:
         st.warning("Logo '1.bara tama wijaya.jpg' tidak ditemukan.")
     
-    st.markdown("## 🏢 WATER MANAGEMENT")
+    # <--- PERUBAHAN NAMA PROGRAM DI SIDEBAR
+    st.markdown("## 🏢 DMS : Dry Mine System")
     
     if st.session_state['logged_in']:
         role_label = "SUPER ADMIN" if st.session_state['is_admin'] else "USER"
